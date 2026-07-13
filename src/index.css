@@ -1,0 +1,76 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+:root {
+  --color-primary: #0ea5e9; /* Sky 500 */
+  --color-primary-dark: #0284c7; /* Sky 600 */
+  --color-primary-light: #e0f2fe; /* Sky 100 */
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color-scheme: light;
+}
+
+/* Base custom styles for premium iOS web app feel */
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #f8fafc; /* Slate 50 for desktop background */
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+  color: #1e293b; /* Slate 800 */
+}
+
+/* Remove default selection styling to feel like a native app */
+* {
+  box-sizing: border-box;
+  -webkit-touch-callout: none;
+}
+
+/* Hide scrollbar for clean UI */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Dynamic button scale feedback like native iOS */
+.ios-btn-press {
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+
+.ios-btn-press:active {
+  transform: scale(0.96);
+  opacity: 0.9;
+}
+
+/* Glassmorphism utility */
+.glass-effect {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* Fade in animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Coach character gentle breathing */
+@keyframes float {
+  0% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-6px) rotate(1deg); }
+  100% { transform: translateY(0px) rotate(0deg); }
+}
+
+.animate-coach-float {
+  animation: float 4s ease-in-out infinite;
+}
