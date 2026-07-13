@@ -23,6 +23,7 @@ export interface DailyDiet {
     dinner: number;
     snack: number;
   };
+  profileMode?: 'maintain' | 'leanmass' | 'bulk' | 'cut';
 }
 
 export interface WorkoutSet {
@@ -324,6 +325,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         [date]: {
           ...day,
+          profileMode: day.profileMode || userProfile.mode,
           items: [...day.items, newItem],
         },
       };
@@ -357,6 +359,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         [date]: {
           ...day,
+          profileMode: day.profileMode || userProfile.mode,
           simpleProteinMeals: updatedMeals,
           simpleProtein: newTotal,
         },
@@ -371,6 +374,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         [date]: {
           ...day,
+          profileMode: day.profileMode || userProfile.mode,
           mode: day.mode === 'detailed' ? 'simple' : 'detailed',
         },
       };

@@ -4,7 +4,8 @@ import { DashboardTab } from './components/DashboardTab';
 import { DietTab } from './components/DietTab';
 import { WorkoutTab } from './components/WorkoutTab';
 import { SettingsTab } from './components/SettingsTab';
-import { Home, ClipboardList, Dumbbell, Settings, Sparkles, ChevronRight, ChevronLeft } from 'lucide-react';
+import { CalendarTab } from './components/CalendarTab';
+import { Home, ClipboardList, Dumbbell, Calendar, Settings, Sparkles, ChevronRight, ChevronLeft } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
   const { userProfile, updateProfile, generateAutoRoutine } = useApp();
@@ -292,6 +293,7 @@ const MainLayout: React.FC = () => {
         {activeTab === 'dashboard' && <DashboardTab setActiveTab={setActiveTab} />}
         {activeTab === 'diet' && <DietTab />}
         {activeTab === 'workout' && <WorkoutTab />}
+        {activeTab === 'calendar' && <CalendarTab />}
         {activeTab === 'settings' && <SettingsTab />}
       </main>
 
@@ -325,6 +327,16 @@ const MainLayout: React.FC = () => {
         >
           <Dumbbell className="w-5 h-5" />
           <span>운동일지</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('calendar')}
+          className={`flex flex-col items-center gap-1 font-sans font-bold text-[10px] tracking-tight transition-all ${
+            activeTab === 'calendar' ? 'text-sky-500 scale-105' : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <Calendar className="w-5 h-5" />
+          <span>달력</span>
         </button>
 
         <button
