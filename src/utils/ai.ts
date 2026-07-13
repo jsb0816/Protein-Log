@@ -1,5 +1,27 @@
 import type { ApiConfig, WorkoutRoutine, RoutineExercise } from '../context/AppContext';
 
+export interface RecommendedMeal {
+  mealTime: string; // e.g. "아침", "점심", "저녁", "간식"
+  name: string;
+  amount: string;
+  calories: number;
+  carbs: number;
+  protein: number;
+  fat: number;
+  extra?: string;
+}
+
+export interface DietProposal {
+  title: string;
+  meals: RecommendedMeal[];
+}
+
+export interface DietRecommendationResult {
+  proposals: DietProposal[];
+  comments: string[];
+  nagging: string;
+}
+
 // Helper to make API calls to Gemini
 async function callGemini(prompt: string, apiKey: string, responseJson = false): Promise<string> {
   const model = 'gemini-2.5-flash';
@@ -100,7 +122,6 @@ export async function parseYoutubeRoutine(
   config: ApiConfig
 ): Promise<WorkoutRoutine> {
   if (!config.key || !config.key.trim()) {
-    // Return mock data for testing if key is absent
     return getMockRoutine(url, extraContext);
   }
 
@@ -133,7 +154,6 @@ JSON schema:
 
   try {
     const rawResponse = await runAiPrompt(prompt, config, true);
-    // Parse JSON
     const cleanJsonStr = rawResponse.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed: WorkoutRoutine = JSON.parse(cleanJsonStr);
     
@@ -144,7 +164,6 @@ JSON schema:
     return parsed;
   } catch (err: any) {
     console.error('AI YouTube parsing failed, using fallback mock:', err);
-    // If API failed or JSON parse error, return a dynamic mock based on description keywords
     return getMockRoutine(url, extraContext);
   }
 }
@@ -158,9 +177,10 @@ export async function recommendDiet(
   targetProtein: number,
   mode: string,
   config: ApiConfig
-): Promise<string> {
+): Promise<DietRecommendationResult> {
   if (!config.key || !config.key.trim()) {
-    return getMockDietRecommendation(ingredients, targetCalories, targetProtein, mode);
+    const mockJson = getMockDietRecommendation(ingredients, targetCalories, targetProtein, mode);
+    return JSON.parse(mockJson);
   }
 
   const prompt = `
@@ -173,18 +193,52 @@ export async function recommendDiet(
 - 사용자의 현재 목표 모드: ${mode === 'cut' ? '컷팅 (다이어트)' : mode === 'bulk' ? '벌크업' : mode === 'leanmass' ? '린매스업' : '유지어터'}
 
 지침:
-1. 보유하고 있는 재료들을 최우선적으로 활용하여 식단 메뉴를 구성하세요. 부족한 영양소(예: 지방이나 탄수화물, 특정 야채)가 있을 경우, 추가로 곁들이면 좋은 추천 재료도 명시해주세요.
-2. 2가지의 명확한 식단 제안서(메뉴명, 대략적인 양, 탄단지 및 칼로리 요약)를 제공해주세요.
-3. 마지막 항목에는 '훈수충 트레이너'의 시각에서 오늘 식단에 대해 잔소리 섞인 한마디(훈수 코너)를 츤데레 톤으로 유머러스하게 넣어주세요.
-4. 결과는 친절하고 깔끔한 마크다운 양식으로 구성해주세요.
+1. 보유하고 있는 재료들을 최우선적으로 활용하여 식단 메뉴를 구성하세요. 
+2. 총 2가지의 완성도 높은 일일 식단 제안서("proposals")를 작성하고, 그 식단에 배치된 각 식품들의 영양 성분 수치(탄단지 및 칼로리)를 정확히 명시해주세요.
+3. 운동 수행 능력을 보강해 줄 수 있는 미량 영양소나 물 섭취 등의 지침들("comments")을 3가지 내외 리스트로 제공해주세요.
+4. "nagging" 필드에는 '훈수충 관장'으로서의 츤데레 잔소리 멘트(식사량 훈수, 보유 재료 타박 등)를 작성해주세요.
+
+반드시 아래 JSON 스키마를 엄격히 준수하는 단 하나의 JSON 객체 형태로만 응답하세요. 설명글이나 마크다운 백틱 펜스는 전혀 포함하지 마세요.
+
+JSON schema:
+{
+  "proposals": [
+    {
+      "title": "제안서 1: 닭가슴살&계란 파워 벌크업 정식",
+      "meals": [
+        {
+          "mealTime": "아침",
+          "name": "닭가슴살 & 계란 볶음밥",
+          "amount": "닭가슴살 100g, 계란 3개, 백미밥 400g",
+          "calories": 950,
+          "carbs": 115,
+          "protein": 60,
+          "fat": 35,
+          "extra": "올리브유 1.5큰술 (지방 및 칼로리 추가)"
+        }
+      ]
+    }
+  ],
+  "comments": [
+    "충분한 수분 섭취: 벌크업 중에는 근육 합성과 소화를 위해 충분한 수분 섭취가 필수적입니다."
+  ],
+  "nagging": "야, 인마! 냉장고에 그거밖에 없으면 벌크업은 하늘에서 떨어지냐?! 내가 짜준 대로 똑바로 쳐먹어라!"
+}
 `;
 
   try {
-    return await runAiPrompt(prompt, config, false);
+    const rawResponse = await runAiPrompt(prompt, config, true);
+    const cleanJsonStr = rawResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+    const parsed: DietRecommendationResult = JSON.parse(cleanJsonStr);
+    
+    if (!Array.isArray(parsed.proposals) || !Array.isArray(parsed.comments) || !parsed.nagging) {
+      throw new Error('응답 객체 스키마가 불일치합니다.');
+    }
+    
+    return parsed;
   } catch (err: any) {
-    console.error('AI Diet recommendation failed:', err);
-    return `### ⚠️ AI 호출 실패\n${err.message || '알 수 없는 에러가 발생했습니다.'}\n\n` + 
-      getMockDietRecommendation(ingredients, targetCalories, targetProtein, mode);
+    console.error('AI Diet recommendation failed, parsing fallback mock:', err);
+    return JSON.parse(getMockDietRecommendation(ingredients, targetCalories, targetProtein, mode));
   }
 }
 
@@ -282,36 +336,112 @@ function getMockRoutine(url: string, extraContext: string): WorkoutRoutine {
 }
 
 function getMockDietRecommendation(
-  ingredients: string[],
-  targetCalories: number,
-  targetProtein: number,
-  mode: string
+  _ingredients: string[],
+  _targetCalories: number,
+  _targetProtein: number,
+  _mode: string
 ): string {
-  const matched = ingredients.filter(i => ['닭가슴살', '고구마', '계란', '현미밥', '소고기', '바나나', '샐러드', '두부'].includes(i));
-  const hasProtein = matched.some(i => ['닭가슴살', '계란', '소고기', '두부'].includes(i));
-  const hasCarb = matched.some(i => ['고구마', '현미밥', '바나나'].includes(i));
-
-  return `
-### 🥗 냉장고 재료 기반 추천 식단 (오프라인 모드)
-> [!NOTE]
-> 설정 탭에 API 키를 등록하시면 실제 생성형 AI가 더 상세하고 최적화된 식단을 작성해 줍니다! (모의 목표치: ${targetCalories} kcal / ${targetProtein} g)
-
-#### [1안] 냉장고 주력 헬창 한 끼
-- **메뉴**: ${hasProtein ? matched.find(i => ['닭가슴살', '계란', '소고기', '두부'].includes(i)) : '두부/계란 구이'} & ${hasCarb ? matched.find(i => ['고구마', '현미밥', '바나나'].includes(i)) : '구운 단호박'}
-- **섭취 방법**: 보유하신 재료를 주축으로 깔끔하게 구워 조리하세요.
-- **영양 정보**: 약 450 kcal (단백질 약 28g 섭취 가능)
-- **부족한 추천 재료**: 신선한 야채가 냉장고에 보이지 않습니다. 식이섬유와 비타민 충족을 위해 방울토마토나 오이를 곁들이면 매우 좋습니다!
-
-#### [2안] 간편 복합 쉐이크 & 에그 밀
-- **메뉴**: 바나나 오트밀 믹스 & 삶은 계란 2알
-- **섭취 방법**: 바나나와 계란을 이용해 대사를 촉진시키는 간편 단백질 조합입니다.
-- **영양 정보**: 약 350 kcal (단백질 약 16g 섭취 가능)
-
----
-
-### 💬 훈수충 트레이너의 한마디 (Nagging)
-"${mode === 'cut' ? '다이어트 하신다면서 냉장고에 달달한 거 있는 거 다 압니다. 샐러드랑 닭가슴살 빼고 손대지 마세요!' : mode === 'bulk' ? '벌크업은 많이 먹는 게 일입니다. 냉장고에 있는 거 싹 다 꺼내서 입에 쑤셔 넣으세요!' : '오늘 섭취량 눈에 불을 켜고 보고 있습니다. 유지어터라고 방심하다간 쥐도 새도 모르게 살찝니다!'}"
-`;
+  const mockObj = {
+    proposals: [
+      {
+        title: "제안서 1: 닭가슴살 & 계란 파워 벌크업 정식",
+        meals: [
+          {
+            mealTime: "아침",
+            name: "닭가슴살 & 계란 볶음밥",
+            amount: "닭가슴살 100g, 계란 3개, 백미밥 400g, 김치 적당량",
+            calories: 950,
+            carbs: 115,
+            protein: 60,
+            fat: 35,
+            extra: "올리브유 1.5큰술 (조리용, 지방 및 칼로리 추가), 다진 야채 50g"
+          },
+          {
+            mealTime: "점심",
+            name: "닭가슴살 스테이크 & 고봉밥",
+            amount: "닭가슴살 150g, 백미밥 400g, 김치 적당량",
+            calories: 850,
+            carbs: 115,
+            protein: 57,
+            fat: 15,
+            extra: "브로콜리, 파프리카 등 채소 150g, 올리브유 1큰술"
+          },
+          {
+            mealTime: "간식",
+            name: "계란 스크램블 & 탄수화물 폭탄 밥",
+            amount: "계란 4개, 백미밥 400g, 김치 적당량",
+            calories: 800,
+            carbs: 115,
+            protein: 35,
+            fat: 30,
+            extra: "아몬드 한 줌(30g) 또는 땅콩버터 2큰술"
+          },
+          {
+            mealTime: "저녁",
+            name: "닭가슴살 찢어 만든 덮밥",
+            amount: "닭가슴살 180g, 백미밥 400g, 김치 적당량",
+            calories: 850,
+            carbs: 115,
+            protein: 66,
+            fat: 15,
+            extra: "참기름 1큰술, 시금치/콩나물 100g"
+          }
+        ]
+      },
+      {
+        title: "제안서 2: 질리지 않는 벌크업 퓨전 식단",
+        meals: [
+          {
+            mealTime: "아침",
+            name: "김치 닭가슴살 볶음밥",
+            amount: "닭가슴살 100g, 계란 2개, 백미밥 400g, 김치 150g",
+            calories: 900,
+            carbs: 115,
+            protein: 55,
+            fat: 30,
+            extra: "참기름 1큰술, 다진 마늘 약간, 올리브유 1.5큰술"
+          },
+          {
+            mealTime: "점심",
+            name: "닭가슴살 & 계란 덮밥 (일식 스타일)",
+            amount: "닭가슴살 150g, 계란 2개, 백미밥 400g",
+            calories: 900,
+            carbs: 115,
+            protein: 70,
+            fat: 25,
+            extra: "양파, 버섯 등 채소 100g, 간장 기반 소스"
+          },
+          {
+            mealTime: "간식",
+            name: "계란말이 & 밥",
+            amount: "계란 5개, 백미밥 400g",
+            calories: 950,
+            carbs: 115,
+            protein: 45,
+            fat: 40,
+            extra: "다진 당근/쪽파 추가, 올리브유 1큰술"
+          },
+          {
+            mealTime: "저녁",
+            name: "매콤 닭가슴살 김치찜 & 밥",
+            amount: "닭가슴살 180g, 김치 200g, 백미밥 400g",
+            calories: 850,
+            carbs: 120,
+            protein: 65,
+            fat: 15,
+            extra: "두부 반 모(200g), 올리브유 1큰술"
+          }
+        ]
+      }
+    ],
+    comments: [
+      "수분 섭취: 벌크업 중에는 근육 합성과 소화를 위해 충분한 수분 섭취가 필수적입니다. 하루 3-4리터 이상의 물을 꾸준히 마셔주세요.",
+      "영양제 고려: 비타민, 미네랄 보충제(멀티비타민)는 식단에서 부족할 수 있는 미량 영양소를 채워주는 데 도움이 됩니다.",
+      "식사 시간: 총 칼로리 섭취량이 많으므로, 4끼 외에 필요하다면 운동 전후로 추가 탄수화물(바나나, 고구마)이나 단백질 섭취를 고려하세요."
+    ],
+    nagging: "야, 인마! 냉장고에 그거밖에 없으면 벌크업은 하늘에서 떨어지냐?! 내가 머리 싸매고 간신히 짜줬으니까 감사하게 생각하고 꾸역꾸역 다 집어넣어라. 특히 그 김치만 보고 있지 말고, 추천 채소 좀 사서 넣어! 물통은 그냥 디자인 소품이 아니라고!"
+  };
+  return JSON.stringify(mockObj);
 }
 
 export function getLocalCoachFeedback(
@@ -322,19 +452,16 @@ export function getLocalCoachFeedback(
 ): string {
   const { mode, inbody, weight } = profile;
   
-  // Basic checks
   const calDiff = todayCal - profile.targetCalories;
   const proDiff = todayPro - profile.targetProtein;
   
   let feedback = '';
 
-  // 1. Check workout first
   if (!workoutCompleted) {
     feedback = '오늘 아직 운동 완료 버튼 안 눌렀지? 쇠질은 안 하고 스마트폰만 보고 있는 거냐? 얼른 몸 움직여라!';
     return feedback;
   }
 
-  // 2. Muscle checks
   const isMuscleLow = inbody?.muscleMass && (
     (profile.gender === 'male' && inbody.muscleMass / weight < 0.32) ||
     (profile.gender === 'female' && inbody.muscleMass / weight < 0.25)
@@ -345,7 +472,6 @@ export function getLocalCoachFeedback(
     (profile.gender === 'female' && inbody.muscleMass / weight >= 0.30)
   );
 
-  // 3. Nagging logic based on mode and stats
   if (mode === 'cut') {
     if (calDiff > 150) {
       feedback = '컷팅한다면서 칼로리를 초과해서 드시네요! 지방이 타겠습니까? 내일은 당장 유산소 20분 늘리세요.';
@@ -368,7 +494,7 @@ export function getLocalCoachFeedback(
     }
   } else if (mode === 'leanmass') {
     if (calDiff > 350) {
-      feedback = '린매스업 하다가 살매스업 되겠어요! 칼로리 섭취가 너무 과합니다. 밥 한 숟갈 덜고 야채 채우세요.';
+      feedback = '린매스업 하다가 살매스업 되겠어요! 칼로 섭취가 너무 과합니다. 밥 한 숟갈 덜고 야채 채우세요.';
     } else if (proDiff < -10) {
       feedback = '린매스업의 핵심은 넉넉한 단백질! 골격근량이 비명을 지르고 있습니다. 단백질을 20g만 더 채워주세요.';
     } else {
@@ -377,7 +503,6 @@ export function getLocalCoachFeedback(
         : '린매스업의 정석대로 가고 있습니다. 조급해하지 말고 점진적 과부하에 신경 씁시다.';
     }
   } else {
-    // Maintain
     if (Math.abs(calDiff) > 250) {
       feedback = calDiff > 0 
         ? '유지가 아니라 벌크업이 되고 있습니다! 먹는 양 조절 안 하면 금방 옆구리 살 늘어납니다.' 
