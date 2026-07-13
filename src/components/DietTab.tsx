@@ -375,64 +375,66 @@ export const DietTab: React.FC = () => {
       </div>
 
       {/* Refrigerator Inventory Section */}
-      <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-100">
-        <div className="flex items-center gap-2 mb-3 border-b border-slate-50 pb-2">
-          <Refrigerator className="w-5 h-5 text-sky-500" />
-          <h2 className="text-sm font-bold text-slate-700">우리 집 냉장고 보유 재료</h2>
+      {isDetailed && (
+        <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-100">
+          <div className="flex items-center gap-2 mb-3 border-b border-slate-50 pb-2">
+            <Refrigerator className="w-5 h-5 text-sky-500" />
+            <h2 className="text-sm font-bold text-slate-700">우리 집 냉장고 보유 재료</h2>
+          </div>
+
+          <p className="text-xs text-slate-400 mb-3 leading-relaxed">
+            냉장고 속에 가지고 계신 재료들을 등록해 두시면 이를 최우선으로 배치하는 식단 조합을 AI가 알아서 조율해 줍니다.
+          </p>
+
+          {/* Input box to add ingredient tags */}
+          <form onSubmit={handleAddIngredient} className="flex gap-2 mb-4">
+            <input
+              type="text"
+              placeholder="재료 이름 입력 (예: 닭가슴살, 오이, 계란)"
+              value={newIngredient}
+              onChange={(e) => setNewIngredient(e.target.value)}
+              className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-sky-500 focus:bg-white"
+            />
+            <button
+              type="submit"
+              className="bg-sky-500 hover:bg-sky-600 text-white font-bold px-4 py-2 rounded-xl text-xs ios-btn-press"
+            >
+              추가
+            </button>
+          </form>
+
+          {/* Ingredient tags */}
+          <div className="flex flex-wrap gap-2">
+            {fridgeIngredients.length > 0 ? (
+              fridgeIngredients.map((ing) => (
+                <span
+                  key={ing}
+                  className="bg-slate-50 hover:bg-red-50 text-slate-600 hover:text-red-500 text-xs font-semibold px-3 py-1.5 rounded-full border border-slate-100 cursor-pointer flex items-center gap-1.5 transition-all"
+                  onClick={() => removeFridgeIngredient(ing)}
+                >
+                  {ing}
+                  <span className="text-[10px] opacity-60">&times;</span>
+                </span>
+              ))
+            ) : (
+              <div className="text-center py-4 w-full text-xs text-slate-400 font-semibold border border-dashed border-slate-100 rounded-xl">
+                냉장고가 비어 있습니다. 재료를 등록해 보세요!
+              </div>
+            )}
+          </div>
+
+          {/* AI Diet suggestion trigger button */}
+          <div className="mt-5 pt-3 border-t border-slate-50">
+            <button
+              onClick={triggerAiDiet}
+              className="w-full bg-sky-500 text-white font-bold py-3 rounded-2xl text-xs ios-btn-press hover:bg-sky-600 flex items-center justify-center gap-2 shadow-sm shadow-sky-100"
+            >
+              <Sparkles className="w-4.5 h-4.5 fill-current" />
+              AI 보유 재료 식단 추천 생성
+            </button>
+          </div>
         </div>
-
-        <p className="text-xs text-slate-400 mb-3 leading-relaxed">
-          냉장고 속에 가지고 계신 재료들을 등록해 두시면 이를 최우선으로 배치하는 식단 조합을 AI가 알아서 조율해 줍니다.
-        </p>
-
-        {/* Input box to add ingredient tags */}
-        <form onSubmit={handleAddIngredient} className="flex gap-2 mb-4">
-          <input
-            type="text"
-            placeholder="재료 이름 입력 (예: 닭가슴살, 오이, 계란)"
-            value={newIngredient}
-            onChange={(e) => setNewIngredient(e.target.value)}
-            className="flex-1 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-sky-500 focus:bg-white"
-          />
-          <button
-            type="submit"
-            className="bg-sky-500 hover:bg-sky-600 text-white font-bold px-4 py-2 rounded-xl text-xs ios-btn-press"
-          >
-            추가
-          </button>
-        </form>
-
-        {/* Ingredient tags */}
-        <div className="flex flex-wrap gap-2">
-          {fridgeIngredients.length > 0 ? (
-            fridgeIngredients.map((ing) => (
-              <span
-                key={ing}
-                className="bg-slate-50 hover:bg-red-50 text-slate-600 hover:text-red-500 text-xs font-semibold px-3 py-1.5 rounded-full border border-slate-100 cursor-pointer flex items-center gap-1.5 transition-all"
-                onClick={() => removeFridgeIngredient(ing)}
-              >
-                {ing}
-                <span className="text-[10px] opacity-60">&times;</span>
-              </span>
-            ))
-          ) : (
-            <div className="text-center py-4 w-full text-xs text-slate-400 font-semibold border border-dashed border-slate-100 rounded-xl">
-              냉장고가 비어 있습니다. 재료를 등록해 보세요!
-            </div>
-          )}
-        </div>
-
-        {/* AI Diet suggestion trigger button */}
-        <div className="mt-5 pt-3 border-t border-slate-50">
-          <button
-            onClick={triggerAiDiet}
-            className="w-full bg-sky-500 text-white font-bold py-3 rounded-2xl text-xs ios-btn-press hover:bg-sky-600 flex items-center justify-center gap-2 shadow-sm shadow-sky-100"
-          >
-            <Sparkles className="w-4.5 h-4.5 fill-current" />
-            AI 보유 재료 식단 추천 생성
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* Add Food Modal Bottom Sheet */}
       <BottomSheet
