@@ -24,7 +24,7 @@ export interface DietRecommendationResult {
 
 // Helper to make API calls to Gemini
 async function callGemini(prompt: string, apiKey: string, responseJson = false): Promise<string> {
-  const model = 'gemini-2.5-flash';
+  const model = 'gemini-3.1-flash-lite';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   
   const body: any = {
@@ -98,10 +98,30 @@ async function callOpenAI(prompt: string, apiKey: string, responseJson = false):
   return text;
 }
 
+// Helper to call Vercel Serverless Function Proxy
+async function callVercelProxy(prompt: string, responseJson = false): Promise<string> {
+  const response = await fetch('/api/generate', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ prompt, responseJson }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `서버 프록시 에러: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.text;
+}
+
 // Common runner to route between Gemini and OpenAI
 async function runAiPrompt(prompt: string, config: ApiConfig, responseJson = false): Promise<string> {
   if (!config.key || !config.key.trim()) {
-    throw new Error('API Key가 입력되지 않았습니다. 설정 화면에서 API Key를 입력하세요.');
+    // If no client API key, route securely through the Vercel proxy!
+    return callVercelProxy(prompt, responseJson);
   }
 
   if (config.provider === 'openai') {
