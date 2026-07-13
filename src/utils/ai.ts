@@ -1,4 +1,11 @@
 import type { ApiConfig, WorkoutRoutine, RoutineExercise } from '../context/AppContext';
+import { buildYoutubeContextBlock, fetchYoutubeMetadata } from './youtube';
+import {
+  extractExercisesFromText,
+  normalizeParsedExercise,
+  toRoutineExercise,
+  type ParsedExerciseRaw,
+} from './exerciseNaming';
 
 export interface RecommendedMeal {
   mealTime: string; // e.g. "아침", "점심", "저녁", "간식"
@@ -63,7 +70,7 @@ async function callGemini(prompt: string, apiKey: string, responseJson = false):
 }
 
 // Helper to make API calls to OpenAI
-async function callOpenAI(prompt: string, apiKey: string, responseJson = false): Promise<string> {
+async function callOpenAI(prompt: string, apiKey: string, responseJson = false, temperature = 0.7): Promise<string> {
   const url = 'https://api.openai.com/v1/chat/completions';
   
   const body: any = {
@@ -71,7 +78,7 @@ async function callOpenAI(prompt: string, apiKey: string, responseJson = false):
     messages: [
       { role: 'user', content: prompt }
     ],
-    temperature: 0.7,
+    temperature,
   };
 
   if (responseJson) {
@@ -118,20 +125,88 @@ async function callVercelProxy(prompt: string, responseJson = false): Promise<st
 }
 
 // Common runner to route between Gemini and OpenAI
-async function runAiPrompt(prompt: string, config: ApiConfig, responseJson = false): Promise<string> {
+async function runAiPrompt(
+  prompt: string,
+  config: ApiConfig,
+  responseJson = false,
+  temperature = 0.7
+): Promise<string> {
   if (!config.key || !config.key.trim()) {
     // If no client API key, route securely through the Vercel proxy!
     return callVercelProxy(prompt, responseJson);
   }
 
   if (config.provider === 'openai') {
-    return callOpenAI(prompt, config.key, responseJson);
+    return callOpenAI(prompt, config.key, responseJson, temperature);
   } else {
     return callGemini(prompt, config.key, responseJson);
   }
 }
 
 // --- Specific AI Functions ---
+
+interface RawRoutineResponse {
+  name: string;
+  exercises: Array<Partial<ParsedExerciseRaw> & { name?: string }>;
+}
+
+const YOUTUBE_ROUTINE_PROMPT = (contextBlock: string) => `
+당신은 피트니스 트레이닝 및 운동 루틴 설계 전문가입니다.
+제공된 유튜브 영상 정보(제목, 채널, 자막, 설명)를 분석하여 사용자가 따라할 수 있는 운동 루틴을 JSON으로 추출하세요.
+
+${contextBlock}
+
+## 핵심 규칙 (반드시 준수)
+1. 영상에 실제로 등장하는 운동만 포함하세요. 영상에 없는 운동을 임의로 추가하지 마세요.
+2. 각 운동은 **장비(equipment)**, **각도(angle)**, **기본 동작명(baseExercise)** 을 반드시 구분하세요.
+3. "벤치 프레스"처럼 모호한 이름만 쓰지 마세요. 반드시 아래 조합으로 구체화하세요:
+   - 플랫 바벨 벤치 프레스 / 인클라인 덤벨 벤치 프레스 / 디클라인 바벨 벤치 프레스
+   - 스미스 머신 플랫 벤치 프레스 / 스미스 머신 인클라인 벤치 프레스
+   - 케이블 크로스오버, 머신 체스트 프레스, 맨몸 푸시업 등
+4. equipment 허용값: barbell | dumbbell | cable | machine | smith | bodyweight | kettlebell | band
+5. angle 허용값 (해당 시): flat | incline | decline | seated | standing | null
+6. 영상에서 장비/각도가 명확하지 않으면 confidence를 "low"로 설정하고 notes에 [추정]과 근거를 적으세요.
+7. 영상에 세트/횟수가 언급되면 그대로 반영하고, 없을 때만 일반적인 값(3~4세트, 8~12회)을 사용하세요.
+8. 영상 순서대로 exercises 배열을 정렬하세요.
+
+## 잘못된 예 vs 올바른 예
+- ❌ "벤치 프레스" → ✅ equipment: barbell, angle: flat, baseExercise: "벤치 프레스"
+- ❌ "덤벨 프레스" → ✅ equipment: dumbbell, angle: incline, baseExercise: "벤치 프레스"
+- ❌ "가슴 운동" → ✅ equipment: cable, baseExercise: "케이블 크로스오버"
+
+반드시 아래 JSON 스키마와 완전히 동일한 형식의 오브젝트 하나만 반환하세요.
+마크다운 펜스(\`\`\`json)나 부연 설명 없이 순수 JSON만 출력하세요.
+
+{
+  "name": "영상 기반 루틴 이름",
+  "exercises": [
+    {
+      "baseExercise": "벤치 프레스",
+      "baseExerciseEn": "Bench Press",
+      "equipment": "barbell",
+      "angle": "flat",
+      "grip": null,
+      "machineVariant": null,
+      "sets": 4,
+      "reps": 8,
+      "notes": "가슴 전체 자극, 어깨뼈 고정",
+      "confidence": "high"
+    }
+  ]
+}
+`;
+
+function postProcessRoutine(parsed: RawRoutineResponse): WorkoutRoutine {
+  const exercises: RoutineExercise[] = parsed.exercises.map((raw) => {
+    const normalized = normalizeParsedExercise(raw);
+    return toRoutineExercise(normalized);
+  });
+
+  return {
+    name: parsed.name?.trim() || '유튜브 영상 기반 맞춤형 루틴',
+    exercises,
+  };
+}
 
 /**
  * Parses YouTube video details into a structured routine
@@ -141,50 +216,31 @@ export async function parseYoutubeRoutine(
   extraContext: string,
   config: ApiConfig
 ): Promise<WorkoutRoutine> {
-  if (!config.key || !config.key.trim()) {
-    return getMockRoutine(url, extraContext);
+  const metadata = await fetchYoutubeMetadata(url);
+  const contextBlock = buildYoutubeContextBlock(url, metadata, extraContext);
+  const hasRichContext =
+    Boolean(metadata?.title) ||
+    extraContext.trim().length > 30;
+
+  if (!hasRichContext) {
+    return getMockRoutine(url, extraContext, contextBlock);
   }
 
-  const prompt = `
-당신은 피트니스 트레이닝 및 운동 루틴 설계 전문가입니다.
-제공된 유튜브 링크 및 관련 텍스트 정보(영상 제목, 자막, 혹은 설명 등)를 분석하여 사용자가 따라할 수 있는 운동 루틴을 JSON 데이터로 추출해 주세요.
-
-[유튜브 URL]
-${url}
-
-[사용자가 입력한 추가 정보 및 자막 컨텍스트]
-${extraContext || '없음'}
-
-반드시 아래 규격과 완전히 동일한 JSON 오브젝트 하나만을 반환해야 합니다. 다른 텍스트나 부연 설명은 전혀 쓰지 마세요.
-반드시 응답 본문은 JSON 형식을 준수해야 하며 마크다운 펜스(\`\`\`json)를 포함하지 말고 순수 JSON 형식의 문자열로만 응답하세요. 만약 사용자가 적어준 정보가 부족하더라도, 운동 이름들을 유추하고 임의의 일반적인 세트와 횟수를 채워 루틴을 완성해야 합니다.
-
-JSON schema:
-{
-  "name": "유튜브 영상 기반 맞춤형 루틴 이름",
-  "exercises": [
-    {
-      "name": "운동 영어/한글 이름 (예: 벤치 프레스 - Bench Press)",
-      "sets": 4,
-      "reps": 10,
-      "notes": "자세 팁, 무게 추천, 혹은 주의사항"
-    }
-  ]
-}
-`;
+  const prompt = YOUTUBE_ROUTINE_PROMPT(contextBlock);
 
   try {
-    const rawResponse = await runAiPrompt(prompt, config, true);
+    const rawResponse = await runAiPrompt(prompt, config, true, 0.2);
     const cleanJsonStr = rawResponse.replace(/```json/g, '').replace(/```/g, '').trim();
-    const parsed: WorkoutRoutine = JSON.parse(cleanJsonStr);
+    const parsed: RawRoutineResponse = JSON.parse(cleanJsonStr);
     
-    if (!parsed.name || !Array.isArray(parsed.exercises)) {
+    if (!parsed.name || !Array.isArray(parsed.exercises) || parsed.exercises.length === 0) {
       throw new Error('올바르지 않은 응답 형식');
     }
     
-    return parsed;
+    return postProcessRoutine(parsed);
   } catch (err: any) {
     console.error('AI YouTube parsing failed, using fallback mock:', err);
-    return getMockRoutine(url, extraContext);
+    return getMockRoutine(url, extraContext, contextBlock);
   }
 }
 
@@ -316,39 +372,52 @@ export async function getBackseatCoachFeedback(
 
 // --- MOCK FALLBACKS ---
 
-function getMockRoutine(url: string, extraContext: string): WorkoutRoutine {
-  const text = (url + ' ' + extraContext).toLowerCase();
+function getMockRoutine(url: string, extraContext: string, contextBlock?: string): WorkoutRoutine {
+  const text = (contextBlock || url + ' ' + extraContext).toLowerCase();
   
   let name = '유튜브 영상 기반 맞춤형 루틴';
   let exercises: RoutineExercise[] = [];
 
+  const extracted = extractExercisesFromText(text);
+  if (extracted.length > 0) {
+    exercises = extracted.map((raw) => toRoutineExercise(raw));
+    if (text.includes('chest') || text.includes('가슴') || text.includes('벤치')) {
+      name = '유튜브 가슴 집중 타겟 루틴';
+    } else if (text.includes('back') || text.includes('등') || text.includes('풀업')) {
+      name = '유튜브 등 신의 자극 루틴';
+    } else if (text.includes('leg') || text.includes('하체') || text.includes('스쿼트')) {
+      name = '유튜브 하체 불타는 루틴';
+    }
+    return { name, exercises };
+  }
+
   if (text.includes('chest') || text.includes('가슴') || text.includes('벤치')) {
     name = '유튜브 가슴 집중 타겟 루틴';
     exercises = [
-      { name: '덤벨 플라이 - Dumbbell Fly', sets: 4, reps: 12, notes: '수축 시 가슴 안쪽까지 모아주는 느낌으로 진행' },
-      { name: '인클라인 덤벨 프레스 - Incline dumbbell press', sets: 4, reps: 10, notes: '윗가슴 근육 결대로 덤벨을 밀어 올리기' },
-      { name: '푸쉬업 - Push Up', sets: 3, reps: 15, notes: '마지막 가슴 털어주기용 고볼륨 세트' },
+      toRoutineExercise(normalizeParsedExercise({ baseExercise: '벤치 프레스', baseExerciseEn: 'Bench Press', equipment: 'barbell', angle: 'flat', sets: 4, reps: 8, notes: '가슴 전체 자극' })),
+      toRoutineExercise(normalizeParsedExercise({ baseExercise: '벤치 프레스', baseExerciseEn: 'Bench Press', equipment: 'dumbbell', angle: 'incline', sets: 4, reps: 10, notes: '윗가슴 타겟' })),
+      toRoutineExercise(normalizeParsedExercise({ baseExercise: '덤벨 플라이', baseExerciseEn: 'Dumbbell Fly', equipment: 'dumbbell', sets: 3, reps: 12, notes: '가슴 수축 극대화' })),
     ];
   } else if (text.includes('back') || text.includes('등') || text.includes('풀업')) {
     name = '유튜브 등 신의 자극 루틴';
     exercises = [
-      { name: '어시스트 풀업 - Assist Pull Up', sets: 4, reps: 8, notes: '견갑 하강을 정확히 느낀 후에 등 힘으로 수축' },
-      { name: '원 암 덤벨 로우 - One arm dumbbell row', sets: 4, reps: 10, notes: '광배근 하부 타겟, 팔꿈치를 골반 쪽으로 당김' },
-      { name: '암 풀 다운 - Arm Pull Down', sets: 3, reps: 12, notes: '가동범위를 길게 가져가면서 광배근 이완' },
+      toRoutineExercise(normalizeParsedExercise({ baseExercise: '풀업', baseExerciseEn: 'Pull Up', equipment: 'bodyweight', sets: 4, reps: 8, notes: '견갑 하강 후 등 힘으로 수축' })),
+      toRoutineExercise(normalizeParsedExercise({ baseExercise: '원암 덤벨 로우', baseExerciseEn: 'One Arm Dumbbell Row', equipment: 'dumbbell', sets: 4, reps: 10, notes: '광배근 하부 타겟' })),
+      toRoutineExercise(normalizeParsedExercise({ baseExercise: '랫 풀다운', baseExerciseEn: 'Lat Pulldown', equipment: 'cable', sets: 3, reps: 12, notes: '넓은 등 전체 자극' })),
     ];
   } else if (text.includes('leg') || text.includes('하체') || text.includes('스쿼트')) {
     name = '유튜브 하체 불타는 10분 루틴';
     exercises = [
-      { name: '스쿼트 - Back Squat', sets: 4, reps: 12, notes: '고관절을 잘 접어 앉으며, 무릎이 모이지 않게 주의' },
-      { name: '런지 - Lunge', sets: 3, reps: 12, notes: '앞발 뒤꿈치에 체중을 싣고 밀며 일어남' },
-      { name: '레그 익스텐션 - Leg Extension', sets: 4, reps: 15, notes: '대퇴사두근 수축 극대화' },
+      toRoutineExercise(normalizeParsedExercise({ baseExercise: '백 스쿼트', baseExerciseEn: 'Back Squat', equipment: 'barbell', sets: 4, reps: 12, notes: '고관절 접어 앉기' })),
+      toRoutineExercise(normalizeParsedExercise({ baseExercise: '레그 프레스', baseExerciseEn: 'Leg Press', equipment: 'machine', sets: 4, reps: 15, notes: '대퇴사두근 집중' })),
+      toRoutineExercise(normalizeParsedExercise({ baseExercise: '런지', baseExerciseEn: 'Lunge', equipment: 'dumbbell', sets: 3, reps: 12, notes: '앞발 뒤꿈치에 체중' })),
     ];
   } else {
     name = '유튜브 올인원 데일리 루틴';
     exercises = [
-      { name: '바벨 데드리프트 - Barbell Deadlift', sets: 4, reps: 8, notes: '복압을 강하게 채워 허리가 굽지 않도록 유지' },
-      { name: '숄더 프레스 - Dumbbell Shoulder Press', sets: 4, reps: 10, notes: '어깨가 으쓱하지 않게 주의하며 귀 옆으로 밀어올림' },
-      { name: '케이블 페이스 풀 - Cable Face Pull', sets: 3, reps: 15, notes: '후면 어깨 및 라운드 숄더 개선' },
+      toRoutineExercise(normalizeParsedExercise({ baseExercise: '데드리프트', baseExerciseEn: 'Deadlift', equipment: 'barbell', sets: 4, reps: 8, notes: '복압 유지' })),
+      toRoutineExercise(normalizeParsedExercise({ baseExercise: '숄더 프레스', baseExerciseEn: 'Shoulder Press', equipment: 'dumbbell', angle: 'seated', sets: 4, reps: 10, notes: '어깨 으쓱 방지' })),
+      toRoutineExercise(normalizeParsedExercise({ baseExercise: '케이블 페이스 풀', baseExerciseEn: 'Cable Face Pull', equipment: 'cable', sets: 3, reps: 15, notes: '후면 어깨 타겟' })),
     ];
   }
 

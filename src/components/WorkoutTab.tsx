@@ -55,10 +55,19 @@ export const WorkoutTab: React.FC = () => {
       setExercises(todayLog.exercises);
     } else if (currentRoutine) {
       const initial: WorkoutExercise[] = currentRoutine.exercises.map((ex) => {
-        // Set generic weights based on mode
         let defaultWeight = 20;
-        if (ex.name.includes('스쿼트') || ex.name.includes('데드리프트')) defaultWeight = 40;
-        if (ex.name.includes('벤치 프레스')) defaultWeight = 30;
+        const nameLower = ex.name.toLowerCase();
+        if (nameLower.includes('스쿼트') || nameLower.includes('squat') || nameLower.includes('데드리프트') || nameLower.includes('deadlift')) {
+          defaultWeight = 40;
+        } else if (nameLower.includes('스미스') || nameLower.includes('smith') || nameLower.includes('바벨') || nameLower.includes('barbell')) {
+          defaultWeight = nameLower.includes('벤치') || nameLower.includes('bench') ? 60 : 50;
+        } else if (nameLower.includes('벤치') || nameLower.includes('bench')) {
+          defaultWeight = nameLower.includes('덤벨') || nameLower.includes('dumbbell') ? 22 : 30;
+        } else if (nameLower.includes('덤벨') || nameLower.includes('dumbbell')) {
+          defaultWeight = 16;
+        } else if (nameLower.includes('케이블') || nameLower.includes('cable') || nameLower.includes('머신') || nameLower.includes('machine')) {
+          defaultWeight = 25;
+        }
         if (userProfile.mode === 'bulk') defaultWeight += 15;
         if (userProfile.mode === 'cut') defaultWeight -= 5;
         
@@ -337,7 +346,7 @@ export const WorkoutTab: React.FC = () => {
             <div className="bg-amber-50 text-amber-700 p-3 rounded-xl border border-amber-100 flex items-start gap-2 mb-1">
               <Sparkles className="w-4.5 h-4.5 text-amber-600 shrink-0 mt-0.5" />
               <p className="text-[10px] leading-relaxed">
-                현재 API Key가 미지정 상태이므로 **오프라인 유튜브 분석 시뮬레이터**가 작동합니다. 입력한 설명 키워드(가슴, 등, 하체 등)를 자동 감지해 맞춤 루틴을 즉석 배정해 줍니다.
+                API Key가 없어도 서버 프록시를 통해 AI 분석을 시도합니다. 정확도를 높이려면 영상 자막이나 설명을 함께 붙여넣어 주세요. 영상 제목은 URL 입력 시 자동으로 가져옵니다.
               </p>
             </div>
           )}
@@ -355,10 +364,10 @@ export const WorkoutTab: React.FC = () => {
           </div>
 
           <div>
-            <label className="block font-bold text-slate-500 mb-1">자막 복사본 또는 주요 멘트/제목 (선택)</label>
+            <label className="block font-bold text-slate-500 mb-1">자막 복사본 또는 주요 멘트/설명 (권장)</label>
             <textarea
               rows={4}
-              placeholder="영상의 타이틀이나 핵심 설명글, 혹은 일부 자막을 복사해서 이곳에 붙여넣어 주세요. AI가 분석하여 가슴/등/하체 부위 및 세트 정보를 초정밀 추출하는 데 큰 도움이 됩니다."
+              placeholder="영상 자막, 설명란, 또는 운동 멘트를 붙여넣어 주세요. 예: '인클라인 덤벨 프레스 4세트 10회', '스미스 머신 벤치프레스'. 장비(바벨/덤벨/스미스), 각도(플랫/인클라인)를 포함할수록 정확도가 크게 올라갑니다."
               value={youtubeContext}
               onChange={(e) => setYoutubeContext(e.target.value)}
               className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-sky-500 focus:bg-white resize-none"
