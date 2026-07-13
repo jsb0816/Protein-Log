@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 export type DietMode = 'detailed' | 'simple';
+export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
 export interface FoodItem {
   id: string;
@@ -9,6 +10,7 @@ export interface FoodItem {
   carbs: number;
   protein: number;
   fat: number;
+  mealType?: MealType;
 }
 
 export interface DailyDiet {
@@ -76,6 +78,7 @@ interface AppContextProps {
   dietLogs: Record<string, DailyDiet>;
   workoutLogs: Record<string, DailyWorkout>;
   currentRoutine: WorkoutRoutine | null;
+  registeredMeals: Omit<FoodItem, 'id' | 'mealType'>[];
   // Summary Stats
   bmr: number;
   tdee: number;
@@ -90,7 +93,7 @@ interface AppContextProps {
   updateApiConfig: (config: ApiConfig) => void;
   addFridgeIngredient: (ingredient: string) => void;
   removeFridgeIngredient: (ingredient: string) => void;
-  addDietItem: (date: string, item: Omit<FoodItem, 'id'>) => void;
+  addDietItem: (date: string, item: Omit<FoodItem, 'id' | 'mealType'>, mealType: MealType) => void;
   removeDietItem: (date: string, itemId: string) => void;
   updateSimpleProtein: (date: string, protein: number) => void;
   toggleDietMode: (date: string) => void;
@@ -98,6 +101,8 @@ interface AppContextProps {
   completeWorkout: (date: string, completed: boolean) => void;
   generateAutoRoutine: () => void;
   saveCustomRoutine: (routine: WorkoutRoutine) => void;
+  registerMeal: (meal: Omit<FoodItem, 'id' | 'mealType'>) => void;
+  removeRegisteredMeal: (name: string) => void;
   resetAllData: () => void;
 }
 
@@ -120,6 +125,13 @@ const defaultApiConfig: ApiConfig = {
   provider: 'gemini',
   key: '',
 };
+
+const defaultMeals: Omit<FoodItem, 'id' | 'mealType'>[] = [
+  { name: '간장계란밥', calories: 420, carbs: 65, protein: 14, fat: 12 },
+  { name: '닭가슴살 샐러드', calories: 280, carbs: 12, protein: 32, fat: 8 },
+  { name: '현미 고구마 한 끼', calories: 350, carbs: 65, protein: 8, fat: 2 },
+  { name: '프로틴 쉐이크', calories: 150, carbs: 5, protein: 30, fat: 1 }
+];
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
@@ -152,6 +164,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : null;
   });
 
+  const [registeredMeals, setRegisteredMeals] = useState<Omit<FoodItem, 'id' | 'mealType'>[]>(() => {
+    const saved = localStorage.getItem('pl_registered_meals');
+    return saved ? JSON.parse(saved) : defaultMeals;
+  });
+
   // Sync to LocalStorage
   useEffect(() => {
     localStorage.setItem('pl_profile', JSON.stringify(userProfile));
@@ -180,6 +197,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.removeItem('pl_routine');
     }
   }, [currentRoutine]);
+
+  useEffect(() => {
+    localStorage.setItem('pl_registered_meals', JSON.stringify(registeredMeals));
+  }, [registeredMeals]);
 
   // --- Calculations ---
 
@@ -285,11 +306,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setFridgeIngredients((prev) => prev.filter((i) => i !== ingredient));
   };
 
-  const addDietItem = (date: string, item: Omit<FoodItem, 'id'>) => {
+  const addDietItem = (date: string, item: Omit<FoodItem, 'id' | 'mealType'>, mealType: MealType) => {
     setDietLogs((prev) => {
       const day = prev[date] || { mode: 'detailed', items: [], simpleProtein: 0 };
       const newItem: FoodItem = {
         ...item,
+        mealType,
         id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9),
       };
       return {
@@ -440,11 +462,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  const registerMeal = (meal: Omit<FoodItem, 'id' | 'mealType'>) => {
+    setRegisteredMeals((prev) => {
+      if (prev.some((m) => m.name.toLowerCase() === meal.name.toLowerCase())) return prev;
+      return [...prev, meal];
+    });
+  };
+
+  const removeRegisteredMeal = (name: string) => {
+    setRegisteredMeals((prev) => prev.filter((m) => m.name !== name));
+  };
+
   const resetAllData = () => {
     setUserProfile(defaultProfile);
     setApiConfig(defaultApiConfig);
     setFridgeIngredients(['닭가슴살', '고구마', '계란', '현미밥']);
     setDietLogs({});
+    setRegisteredMeals(defaultMeals);
     setWorkoutLogs({});
     setCurrentRoutine(null);
     localStorage.clear();
@@ -459,6 +493,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dietLogs,
         workoutLogs,
         currentRoutine,
+        registeredMeals,
         bmr,
         tdee,
         targetCalories,
@@ -479,6 +514,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         completeWorkout,
         generateAutoRoutine,
         saveCustomRoutine,
+        registerMeal,
+        removeRegisteredMeal,
         resetAllData,
       }}
     >

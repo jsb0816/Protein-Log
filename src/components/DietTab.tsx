@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import type { MealType, FoodItem } from '../context/AppContext';
 import { BottomSheet } from './BottomSheet';
 import { recommendDiet } from '../utils/ai';
 import { ClipboardList, Plus, Trash2, Refrigerator, Sparkles, AlertCircle } from 'lucide-react';
@@ -12,18 +13,26 @@ export const DietTab: React.FC = () => {
     targetCalories,
     targetProtein,
     userProfile,
+    registeredMeals,
     addFridgeIngredient,
     removeFridgeIngredient,
     addDietItem,
     removeDietItem,
     updateSimpleProtein,
     toggleDietMode,
+    registerMeal,
+    removeRegisteredMeal,
   } = useApp();
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState<string>('');
+
+  // active meal type being added ('breakfast' | 'lunch' | 'dinner' | 'snack')
+  const [activeMealType, setActiveMealType] = useState<MealType | null>(null);
+  const [addMode, setAddMode] = useState<'preset' | 'manual'>('preset');
+  const [registerAsPreset, setRegisterAsPreset] = useState(false);
 
   // Food Form State
   const [foodName, setFoodName] = useState('');
@@ -54,17 +63,32 @@ export const DietTab: React.FC = () => {
   const totalProt = todayDiet.items.reduce((sum, item) => sum + item.protein, 0);
   const totalFat = todayDiet.items.reduce((sum, item) => sum + item.fat, 0);
 
+  const mealTypes = [
+    { id: 'breakfast', label: '아침 🌅' },
+    { id: 'lunch', label: '점심 ☀️' },
+    { id: 'dinner', label: '저녁 🌙' },
+    { id: 'snack', label: '간식 🍎' },
+  ] as const;
+
   const handleAddFoodSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!foodName.trim()) return;
+    if (!foodName.trim() || !activeMealType) return;
 
-    addDietItem(todayStr, {
+    const foodData = {
       name: foodName,
       calories: parseFloat(calories) || 0,
       carbs: parseFloat(carbs) || 0,
       protein: parseFloat(protein) || 0,
       fat: parseFloat(fat) || 0,
-    });
+    };
+
+    // Log to current meal category
+    addDietItem(todayStr, foodData, activeMealType);
+
+    // Save as preset if checked
+    if (registerAsPreset) {
+      registerMeal(foodData);
+    }
 
     // Reset Form
     setFoodName('');
@@ -72,6 +96,13 @@ export const DietTab: React.FC = () => {
     setCarbs('');
     setProtein('');
     setFat('');
+    setRegisterAsPreset(false);
+    setIsAddOpen(false);
+  };
+
+  const handleSelectPreset = (preset: Omit<FoodItem, 'id' | 'mealType'>) => {
+    if (!activeMealType) return;
+    addDietItem(todayStr, preset, activeMealType);
     setIsAddOpen(false);
   };
 
@@ -100,6 +131,12 @@ export const DietTab: React.FC = () => {
     } finally {
       setAiLoading(false);
     }
+  };
+
+  const openAddModal = (mealType: MealType) => {
+    setActiveMealType(mealType);
+    setAddMode(registeredMeals.length > 0 ? 'preset' : 'manual');
+    setIsAddOpen(true);
   };
 
   // Custom regex markdown parser to render AI feedback beautifully
@@ -157,6 +194,15 @@ export const DietTab: React.FC = () => {
     });
   };
 
+  const getMealTypeName = (type: MealType) => {
+    switch (type) {
+      case 'breakfast': return '아침';
+      case 'lunch': return '점심';
+      case 'dinner': return '저녁';
+      case 'snack': return '간식';
+    }
+  };
+
   return (
     <div className="space-y-6 pb-20 animate-fade-in text-slate-800">
       {/* Mode Selector Toggle */}
@@ -194,77 +240,114 @@ export const DietTab: React.FC = () => {
       </div>
 
       {/* Main Intake Logging Block */}
-      <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-100">
+      <div className="space-y-4">
         {isDetailed ? (
           /* Detailed Macro Logger */
           <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-sm font-bold text-slate-700">오늘의 섭취 칼로리 및 영양소</h2>
-              <button
-                onClick={() => setIsAddOpen(true)}
-                className="bg-sky-50 text-sky-600 font-bold p-1.5 rounded-lg border border-sky-100 flex items-center justify-center ios-btn-press"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
+            
+            {/* COMPACT Daily totals display banner at the top */}
+            <div className="bg-white rounded-2xl p-4 shadow-xs border border-slate-100 text-slate-700">
+              <div className="grid grid-cols-4 gap-1 text-center divide-x divide-slate-100">
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold block mb-0.5">총 칼로리</span>
+                  <span className="text-xs font-black text-slate-800 block">
+                    {totalCal} <span className="text-[9px] font-normal text-slate-400">/ {Math.round(targetCalories)}</span>
+                  </span>
+                  <span className="text-[8px] text-slate-400 block font-medium">kcal</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold block mb-0.5">탄수화물</span>
+                  <span className="text-xs font-extrabold text-slate-700 block">{totalCarb}</span>
+                  <span className="text-[8px] text-slate-400 block font-medium">g</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-sky-500 font-bold block mb-0.5">단백질</span>
+                  <span className="text-xs font-black text-sky-600 block">
+                    {totalProt} <span className="text-[9px] font-normal text-slate-400">/ {Math.round(targetProtein)}</span>
+                  </span>
+                  <span className="text-[8px] text-sky-400 block font-medium">g</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold block mb-0.5">지방</span>
+                  <span className="text-xs font-extrabold text-slate-700 block">{totalFat}</span>
+                  <span className="text-[8px] text-slate-400 block font-medium">g</span>
+                </div>
+              </div>
             </div>
 
-            {/* Micro breakdown grids */}
-            <div className="grid grid-cols-4 gap-2 bg-slate-50 rounded-xl p-3 text-center">
-              <div>
-                <span className="text-[10px] text-slate-400 block font-semibold">칼로리</span>
-                <span className="text-sm font-bold text-slate-700">{totalCal}</span>
-                <span className="text-[8px] text-slate-400 block">/ {targetCalories}kcal</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-slate-400 block font-semibold">탄수화물</span>
-                <span className="text-sm font-bold text-slate-700">{totalCarb}g</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-sky-500 block font-bold">단백질</span>
-                <span className="text-sm font-bold text-sky-600">{totalProt}g</span>
-                <span className="text-[8px] text-slate-400 block">/ {Math.round(targetProtein)}g</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-slate-400 block font-semibold">지방</span>
-                <span className="text-sm font-bold text-slate-700">{totalFat}g</span>
-              </div>
-            </div>
+            {/* Meal Time Sections (아침, 점심, 저녁, 간식) */}
+            <div className="space-y-4">
+              {mealTypes.map((meal) => {
+                const mealItems = todayDiet.items.filter(
+                  (item) => (item.mealType || 'snack') === meal.id
+                );
+                const mealCalSum = mealItems.reduce((sum, item) => sum + item.calories, 0);
+                const mealProtSum = mealItems.reduce((sum, item) => sum + item.protein, 0);
 
-            {/* Food items list */}
-            <div className="space-y-2 max-h-[220px] overflow-y-auto no-scrollbar">
-              {todayDiet.items.length > 0 ? (
-                todayDiet.items.map((item) => (
+                return (
                   <div
-                    key={item.id}
-                    className="flex justify-between items-center bg-slate-50/50 hover:bg-slate-50 rounded-xl p-3 border border-slate-100 transition-all"
+                    key={meal.id}
+                    className="bg-white rounded-2xl p-4 shadow-xs border border-slate-100 space-y-3"
                   >
-                    <div>
-                      <span className="text-xs font-bold text-slate-700 block">{item.name}</span>
-                      <span className="text-[10px] text-slate-400 font-medium">
-                        탄 {item.carbs}g | 단 {item.protein}g | 지 {item.fat}g
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-bold text-slate-600">{item.calories} kcal</span>
+                    {/* Meal Time Header */}
+                    <div className="flex justify-between items-center border-b border-slate-50 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-black text-slate-800">{meal.label}</span>
+                        {(mealCalSum > 0 || mealProtSum > 0) && (
+                          <span className="text-[10px] font-bold text-slate-400">
+                            ({mealCalSum} kcal | 단백질 {mealProtSum}g)
+                          </span>
+                        )}
+                      </div>
                       <button
-                        onClick={() => removeDietItem(todayStr, item.id)}
-                        className="text-red-400 hover:text-red-600 p-1"
+                        onClick={() => openAddModal(meal.id)}
+                        className="bg-sky-50 hover:bg-sky-100 text-sky-600 font-bold p-1 rounded-lg border border-sky-100 flex items-center justify-center ios-btn-press"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Plus className="w-3.5 h-3.5" />
                       </button>
                     </div>
+
+                    {/* Meal Log List */}
+                    <div className="space-y-2">
+                      {mealItems.length > 0 ? (
+                        mealItems.map((item) => (
+                          <div
+                            key={item.id}
+                            className="flex justify-between items-center bg-slate-50/50 hover:bg-slate-50 rounded-xl p-2.5 border border-slate-100 transition-all text-xs"
+                          >
+                            <div className="space-y-0.5">
+                              <span className="font-bold text-slate-700 block">{item.name}</span>
+                              <span className="text-[10px] text-slate-400 font-semibold">
+                                탄 {item.carbs}g | 단 {item.protein}g | 지 {item.fat}g
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="font-extrabold text-slate-600">
+                                {item.calories} kcal
+                              </span>
+                              <button
+                                onClick={() => removeDietItem(todayStr, item.id)}
+                                className="text-red-400 hover:text-red-600 p-1"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center py-4 text-[10px] text-slate-400 font-bold border border-dashed border-slate-100 rounded-xl">
+                          등록된 {getMealTypeName(meal.id)} 식단이 없습니다.
+                        </div>
+                      )}
+                    </div>
                   </div>
-                ))
-              ) : (
-                <div className="text-center py-8 text-xs text-slate-400 font-semibold border border-dashed border-slate-100 rounded-xl">
-                  아직 입력된 식단이 없습니다. + 버튼을 눌러 추가하세요.
-                </div>
-              )}
+                );
+              })}
             </div>
           </div>
         ) : (
           /* Simple Protein Logger */
-          <div className="space-y-5 py-2">
+          <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-100 space-y-5 py-6">
             <div className="text-center">
               <h2 className="text-sm font-bold text-slate-500 mb-1">오늘 섭취한 단백질 총량</h2>
               <div className="flex justify-center items-baseline gap-1 mt-2">
@@ -381,75 +464,159 @@ export const DietTab: React.FC = () => {
       </div>
 
       {/* Add Food Modal Bottom Sheet */}
-      <BottomSheet isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} title="식단 직접 등록">
-        <form onSubmit={handleAddFoodSubmit} className="space-y-4 font-sans text-xs">
-          <div>
-            <label className="block font-bold text-slate-500 mb-1">식품 / 음식 이름 *</label>
-            <input
-              type="text"
-              required
-              placeholder="예: 닭가슴살 볶음밥"
-              value={foodName}
-              onChange={(e) => setFoodName(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5 text-xs font-semibold focus:outline-none focus:border-sky-500 focus:bg-white"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block font-bold text-slate-500 mb-1">칼로리 (kcal)</label>
-              <input
-                type="number"
-                placeholder="예: 320"
-                value={calories}
-                onChange={(e) => setCalories(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5 text-xs font-semibold text-center focus:outline-none focus:border-sky-500"
-              />
-            </div>
-            <div>
-              <label className="block font-bold text-slate-500 mb-1">단백질 (g)</label>
-              <input
-                type="number"
-                placeholder="예: 25"
-                value={protein}
-                onChange={(e) => setProtein(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5 text-xs font-semibold text-center focus:outline-none focus:border-sky-500"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block font-bold text-slate-500 mb-1">탄수화물 (g)</label>
-              <input
-                type="number"
-                placeholder="예: 45"
-                value={carbs}
-                onChange={(e) => setCarbs(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5 text-xs font-semibold text-center focus:outline-none focus:border-sky-500"
-              />
-            </div>
-            <div>
-              <label className="block font-bold text-slate-500 mb-1">지방 (g)</label>
-              <input
-                type="number"
-                placeholder="예: 8"
-                value={fat}
-                onChange={(e) => setFat(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5 text-xs font-semibold text-center focus:outline-none focus:border-sky-500"
-              />
-            </div>
-          </div>
-
-          <div className="pt-4">
+      <BottomSheet
+        isOpen={isAddOpen}
+        onClose={() => setIsAddOpen(false)}
+        title={activeMealType ? `식사 등록 - ${getMealTypeName(activeMealType)}` : '식사 등록'}
+      >
+        <div className="space-y-4 font-sans text-xs">
+          
+          {/* Preset / Manual Tab selector */}
+          <div className="flex bg-slate-100 p-0.5 rounded-xl">
             <button
-              type="submit"
-              className="w-full bg-sky-500 text-white font-bold py-3.5 rounded-xl text-xs ios-btn-press hover:bg-sky-600 shadow-sm"
+              onClick={() => setAddMode('preset')}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                addMode === 'preset' ? 'bg-white text-sky-600 shadow-xs' : 'text-slate-500'
+              }`}
             >
-              식품 등록 완료
+              자주 먹는 메뉴 선택
+            </button>
+            <button
+              onClick={() => setAddMode('manual')}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                addMode === 'manual' ? 'bg-white text-sky-600 shadow-xs' : 'text-slate-500'
+              }`}
+            >
+              직접 메뉴 추가
             </button>
           </div>
-        </form>
+
+          {addMode === 'preset' ? (
+            /* PRESET MODE */
+            <div className="space-y-2">
+              <p className="text-[10px] text-slate-400 font-bold mb-2">
+                아래 등록된 메뉴 목록에서 선택하시면 해당 식사 자리에 즉시 등록됩니다.
+              </p>
+              {registeredMeals.length > 0 ? (
+                <div className="space-y-2 max-h-[300px] overflow-y-auto no-scrollbar pr-1">
+                  {registeredMeals.map((preset) => (
+                    <div
+                      key={preset.name}
+                      className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex justify-between items-center hover:border-sky-300 hover:bg-sky-50/10 transition-all"
+                    >
+                      <div
+                        onClick={() => handleSelectPreset(preset)}
+                        className="flex-1 cursor-pointer select-none"
+                      >
+                        <span className="font-bold text-slate-700 block text-xs mb-0.5">
+                          {preset.name}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-semibold block">
+                          {preset.calories} kcal | 탄 {preset.carbs}g | 단 {preset.protein}g | 지 {preset.fat}g
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => removeRegisteredMeal(preset.name)}
+                        className="text-slate-300 hover:text-red-500 p-1.5 transition-colors"
+                        title="메뉴 삭제"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-[11px] text-slate-400 font-bold border border-dashed border-slate-100 rounded-xl">
+                  자주 먹는 메뉴로 등록된 항목이 없습니다.
+                </div>
+              )}
+            </div>
+          ) : (
+            /* MANUAL MODE */
+            <form onSubmit={handleAddFoodSubmit} className="space-y-4">
+              <div>
+                <label className="block font-bold text-slate-500 mb-1">식품 / 음식 이름 *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="예: 간장계란밥"
+                  value={foodName}
+                  onChange={(e) => setFoodName(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5 text-xs font-semibold focus:outline-none focus:border-sky-500 focus:bg-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-500 mb-1">칼로리 (kcal)</label>
+                  <input
+                    type="number"
+                    placeholder="예: 320"
+                    value={calories}
+                    onChange={(e) => setCalories(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5 text-xs font-semibold text-center focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-500 mb-1">단백질 (g)</label>
+                  <input
+                    type="number"
+                    placeholder="예: 25"
+                    value={protein}
+                    onChange={(e) => setProtein(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5 text-xs font-semibold text-center focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-500 mb-1">탄수화물 (g)</label>
+                  <input
+                    type="number"
+                    placeholder="예: 45"
+                    value={carbs}
+                    onChange={(e) => setCarbs(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5 text-xs font-semibold text-center focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-500 mb-1">지방 (g)</label>
+                  <input
+                    type="number"
+                    placeholder="예: 8"
+                    value={fat}
+                    onChange={(e) => setFat(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5 text-xs font-semibold text-center focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+              </div>
+
+              {/* Checkbox to register as preset */}
+              <div className="flex items-center gap-2 py-1 bg-slate-50 px-3 rounded-xl border border-slate-100">
+                <input
+                  type="checkbox"
+                  id="chk-preset"
+                  checked={registerAsPreset}
+                  onChange={(e) => setRegisterAsPreset(e.target.checked)}
+                  className="w-4 h-4 rounded text-sky-500 focus:ring-sky-500 accent-sky-500"
+                />
+                <label htmlFor="chk-preset" className="text-[10px] text-slate-600 font-extrabold cursor-pointer select-none">
+                  🌟 이 음식을 '자주 먹는 메뉴' 리스트에 함께 등록합니다.
+                </label>
+              </div>
+
+              <div className="pt-4">
+                <button
+                  type="submit"
+                  className="w-full bg-sky-500 text-white font-bold py-3.5 rounded-xl text-xs ios-btn-press hover:bg-sky-600 shadow-sm"
+                >
+                  식품 등록 완료
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
       </BottomSheet>
 
       {/* AI Recommendation Sheet */}
