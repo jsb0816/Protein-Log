@@ -313,58 +313,62 @@ export const DietTab: React.FC = () => {
             </div>
           </div>
         ) : (
-          /* Simple Protein Logger */
-          <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-100 space-y-5 py-6">
-            <div className="text-center">
-              <h2 className="text-sm font-bold text-slate-500 mb-1">오늘 섭취한 단백질 총량</h2>
-              <div className="flex justify-center items-baseline gap-1 mt-2">
-                <span className="text-4xl font-extrabold text-sky-500 tracking-tight">
+          /* Simple Protein Logger divided into categories */
+          <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-100 space-y-4 py-6">
+            <div className="text-center pb-2 border-b border-slate-50">
+              <h2 className="text-xs font-bold text-slate-400 mb-1">오늘의 간편 단백질 총 섭취량</h2>
+              <div className="flex justify-center items-baseline gap-1">
+                <span className="text-3xl font-black text-sky-500 tracking-tight">
                   {todayDiet.simpleProtein || 0}
                 </span>
-                <span className="text-sm font-bold text-slate-400">g</span>
+                <span className="text-xs font-bold text-slate-400">/ {Math.round(targetProtein)}g</span>
               </div>
-              <p className="text-[10px] text-slate-400 font-medium mt-1">
-                목표 단백질 권장량: {Math.round(targetProtein)}g
-              </p>
             </div>
 
-            {/* Interactive sliders/inputs */}
-            <div className="flex justify-center items-center gap-6">
-              <button
-                onClick={() => updateSimpleProtein(todayStr, Math.max(0, (todayDiet.simpleProtein || 0) - 5))}
-                className="w-12 h-12 bg-slate-100 hover:bg-slate-200 rounded-2xl flex items-center justify-center text-lg font-bold text-slate-600 ios-btn-press"
-              >
-                -5
-              </button>
-              <button
-                onClick={() => updateSimpleProtein(todayStr, Math.max(0, (todayDiet.simpleProtein || 0) - 1))}
-                className="w-10 h-10 bg-slate-50 hover:bg-slate-100 rounded-xl flex items-center justify-center text-sm font-bold text-slate-600 ios-btn-press"
-              >
-                -1
-              </button>
-              <button
-                onClick={() => updateSimpleProtein(todayStr, (todayDiet.simpleProtein || 0) + 1)}
-                className="w-10 h-10 bg-slate-50 hover:bg-slate-100 rounded-xl flex items-center justify-center text-sm font-bold text-slate-600 ios-btn-press"
-              >
-                +1
-              </button>
-              <button
-                onClick={() => updateSimpleProtein(todayStr, (todayDiet.simpleProtein || 0) + 5)}
-                className="w-12 h-12 bg-slate-100 hover:bg-slate-200 rounded-2xl flex items-center justify-center text-lg font-bold text-slate-600 ios-btn-press"
-              >
-                +5
-              </button>
-            </div>
+            <div className="space-y-3 pt-2">
+              {mealTypes.map((meal) => {
+                const meals = todayDiet.simpleProteinMeals || { breakfast: 0, lunch: 0, dinner: 0, snack: 0 };
+                const currentVal = meals[meal.id] || 0;
 
-            <div className="px-4">
-              <input
-                type="range"
-                min="0"
-                max={Math.max(150, Math.round(targetProtein * 1.5))}
-                value={todayDiet.simpleProtein || 0}
-                onChange={(e) => updateSimpleProtein(todayStr, parseInt(e.target.value) || 0)}
-                className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-sky-500"
-              />
+                return (
+                  <div key={meal.id} className="bg-slate-50/50 border border-slate-100 rounded-2xl p-3 flex flex-col sm:flex-row justify-between items-center gap-3">
+                    <div className="flex justify-between items-center w-full sm:w-auto gap-4">
+                      <span className="text-xs font-black text-slate-700">{meal.label}</span>
+                      <span className="text-sm font-extrabold text-sky-600 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-100">
+                        {currentVal}g
+                      </span>
+                    </div>
+
+                    {/* Numeric Increments Button Group */}
+                    <div className="flex items-center gap-1.5 justify-end w-full sm:w-auto">
+                      <button
+                        onClick={() => updateSimpleProtein(todayStr, meal.id, Math.max(0, currentVal - 5))}
+                        className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-500 ios-btn-press hover:bg-slate-50"
+                      >
+                        -5
+                      </button>
+                      <button
+                        onClick={() => updateSimpleProtein(todayStr, meal.id, Math.max(0, currentVal - 1))}
+                        className="px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-500 ios-btn-press hover:bg-slate-50"
+                      >
+                        -1
+                      </button>
+                      <button
+                        onClick={() => updateSimpleProtein(todayStr, meal.id, currentVal + 1)}
+                        className="px-2 py-1.5 bg-sky-50 border border-sky-100 rounded-lg text-[10px] font-bold text-sky-600 ios-btn-press hover:bg-sky-100"
+                      >
+                        +1
+                      </button>
+                      <button
+                        onClick={() => updateSimpleProtein(todayStr, meal.id, currentVal + 5)}
+                        className="px-2.5 py-1.5 bg-sky-50 border border-sky-100 rounded-lg text-[10px] font-bold text-sky-600 ios-btn-press hover:bg-sky-100"
+                      >
+                        +5
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

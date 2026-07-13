@@ -17,6 +17,12 @@ export interface DailyDiet {
   mode: DietMode;
   items: FoodItem[];
   simpleProtein: number;
+  simpleProteinMeals?: {
+    breakfast: number;
+    lunch: number;
+    dinner: number;
+    snack: number;
+  };
 }
 
 export interface WorkoutSet {
@@ -95,7 +101,7 @@ interface AppContextProps {
   removeFridgeIngredient: (ingredient: string) => void;
   addDietItem: (date: string, item: Omit<FoodItem, 'id' | 'mealType'>, mealType: MealType) => void;
   removeDietItem: (date: string, itemId: string) => void;
-  updateSimpleProtein: (date: string, protein: number) => void;
+  updateSimpleProtein: (date: string, mealType: MealType, protein: number) => void;
   toggleDietMode: (date: string) => void;
   saveWorkoutLog: (date: string, workout: DailyWorkout) => void;
   completeWorkout: (date: string, completed: boolean) => void;
@@ -338,14 +344,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const updateSimpleProtein = (date: string, protein: number) => {
+  const updateSimpleProtein = (date: string, mealType: MealType, protein: number) => {
     setDietLogs((prev) => {
       const day = prev[date] || { mode: 'simple', items: [], simpleProtein: 0 };
+      const currentMeals = day.simpleProteinMeals || { breakfast: 0, lunch: 0, dinner: 0, snack: 0 };
+      const updatedMeals = {
+        ...currentMeals,
+        [mealType]: Math.max(0, protein),
+      };
+      const newTotal = updatedMeals.breakfast + updatedMeals.lunch + updatedMeals.dinner + updatedMeals.snack;
       return {
         ...prev,
         [date]: {
           ...day,
-          simpleProtein: protein,
+          simpleProteinMeals: updatedMeals,
+          simpleProtein: newTotal,
         },
       };
     });
