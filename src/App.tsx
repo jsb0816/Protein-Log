@@ -275,8 +275,11 @@ const MainLayout: React.FC = () => {
   // 2. Render Main Application UI
   return (
     <div className="flex-1 flex flex-col h-full bg-slate-50/50">
-      {/* iOS App Header */}
-      <header className="px-4 pt-3 pb-3 bg-white border-b border-slate-100 flex justify-between items-center z-10 shrink-0">
+      {/* iOS App Header with Safe Area top padding */}
+      <header 
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+        className="px-4 pb-3 bg-white border-b border-slate-100 flex justify-between items-center z-10 shrink-0"
+      >
         <div className="flex items-center gap-1.5">
           <span className="text-lg font-black text-sky-500 tracking-tight">Protein Log</span>
           <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
@@ -297,8 +300,11 @@ const MainLayout: React.FC = () => {
         {activeTab === 'settings' && <SettingsTab />}
       </main>
 
-      {/* iOS Nav Tab Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 sm:absolute bg-white/95 backdrop-blur-md border-t border-slate-100 z-20 shadow-lg flex justify-around items-center pt-2 pb-5 px-3">
+      {/* iOS Nav Tab Bar with Safe Area bottom padding */}
+      <nav 
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
+        className="fixed bottom-0 left-0 right-0 sm:absolute bg-white/95 backdrop-blur-md border-t border-slate-100 z-20 shadow-lg flex justify-around items-center pt-2 px-3"
+      >
         <button
           onClick={() => setActiveTab('dashboard')}
           className={`flex flex-col items-center gap-1 font-sans font-bold text-[10px] tracking-tight transition-all ${
