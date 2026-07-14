@@ -364,7 +364,10 @@ export const App: React.FC = () => {
     <AppProvider>
       {/* Centered iPhone Mockup Wrapper on Desktop, full viewport on Mobile */}
       <div className="min-h-screen bg-slate-100 flex items-center justify-center font-sans">
-        <div className="w-full max-w-[450px] h-[100vh] sm:h-[850px] bg-white sm:rounded-[36px] sm:shadow-2xl sm:border-[8px] sm:border-slate-800 relative flex flex-col overflow-hidden">
+        <div 
+          style={{ transform: 'translate3d(0, 0, 0)' }}
+          className="w-full max-w-[450px] h-[100vh] sm:h-[850px] bg-white sm:rounded-[36px] sm:shadow-2xl sm:border-[8px] sm:border-slate-800 relative flex flex-col overflow-hidden"
+        >
           
           {/* Status bar simulator (desktop only) */}
           <div className="hidden sm:flex shrink-0 w-full h-8 bg-slate-800 text-white text-[10px] font-bold justify-between items-center px-6 z-30 select-none">
@@ -384,6 +387,7 @@ export const App: React.FC = () => {
           {/* App Core Container */}
           <div className="flex-1 relative overflow-hidden flex flex-col h-full">
             <MainLayout />
+            <div id="modal-root" className="absolute inset-0 pointer-events-none z-50" />
           </div>
 
           {/* Home Bar Simulator (desktop only) */}

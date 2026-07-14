@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import ReactDOM from 'react-dom';
 
 interface BottomSheetProps {
   isOpen: boolean;
@@ -13,7 +14,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
   title,
   children,
 }) => {
-  // Prevent scrolling behind bottom sheet when open
+  // Prevent scrolling behind modal when open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -27,42 +28,39 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center font-sans sm:absolute">
+  const modalRoot = document.getElementById('modal-root');
+  if (!modalRoot) return null;
+
+  const modalContent = (
+    <div className="absolute inset-0 z-50 flex items-center justify-center p-4 font-sans pointer-events-auto">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity duration-300 animate-fade-in"
+        className="absolute inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity duration-300 animate-fade-in"
         onClick={onClose}
       />
       
-      {/* Drawer Container */}
+      {/* Centered Modal Container */}
       <div
-        className="relative w-full max-w-[450px] bg-white rounded-t-3xl shadow-2xl z-10 flex flex-col max-h-[85vh] transition-transform duration-300 transform translate-y-0"
+        className="relative w-full max-w-[400px] bg-white rounded-[28px] shadow-2xl z-10 flex flex-col max-h-[80vh] overflow-hidden"
         style={{
-          animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
-          paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)',
+          animation: 'modalPop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
         }}
       >
         {/* Style block for local keyframes */}
         <style>{`
-          @keyframes slideUp {
-            from { transform: translateY(100%); }
-            to { transform: translateY(0); }
+          @keyframes modalPop {
+            from { transform: scale(0.95); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
           }
         `}</style>
 
-        {/* Grab Handle */}
-        <div className="flex justify-center py-3 cursor-pointer" onClick={onClose}>
-          <div className="w-12 h-1.5 bg-slate-200 rounded-full" />
-        </div>
-
         {/* Title Header */}
         {title && (
-          <div className="px-6 pb-3 border-b border-slate-100 flex justify-between items-center">
-            <h3 className="text-lg font-bold text-slate-800">{title}</h3>
+          <div className="px-6 pt-5 pb-3 border-b border-slate-100/60 flex justify-between items-center shrink-0">
+            <h3 className="text-sm font-black text-slate-800">{title}</h3>
             <button
               onClick={onClose}
-              className="text-sm font-semibold text-sky-500 ios-btn-press"
+              className="text-[10px] font-black text-slate-500 bg-slate-50 border border-slate-100 px-2.5 py-1 rounded-lg ios-btn-press hover:bg-slate-100 transition-all"
             >
               닫기
             </button>
@@ -70,10 +68,12 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
         )}
 
         {/* Scrollable Contents */}
-        <div className="overflow-y-auto px-6 py-4 no-scrollbar flex-1">
+        <div className="overflow-y-auto px-6 py-5 no-scrollbar flex-1">
           {children}
         </div>
       </div>
     </div>
   );
+
+  return ReactDOM.createPortal(modalContent, modalRoot);
 };
