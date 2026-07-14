@@ -226,6 +226,9 @@ function postProcessRoutine(parsed: RawRoutineResponse): WorkoutRoutine {
   };
 }
 
+// Helper for step delay simulation
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
  * Parses YouTube video details into a structured routine
  */
@@ -236,10 +239,14 @@ export async function parseYoutubeRoutine(
   onProgress?: (step: 'METADATA' | 'TRANSCRIPT' | 'AI_PLANNING') => void
 ): Promise<WorkoutRoutine> {
   if (onProgress) onProgress('METADATA');
-  const metadata = await fetchYoutubeMetadata(url);
+  const metadataPromise = fetchYoutubeMetadata(url);
+  // Guarantee METADATA step is visible for at least 800ms
+  const [metadata] = await Promise.all([metadataPromise, delay(800)]);
 
   if (onProgress) onProgress('TRANSCRIPT');
-  const transcriptText = await fetchYoutubeTranscript(url);
+  const transcriptPromise = fetchYoutubeTranscript(url);
+  // Guarantee TRANSCRIPT step is visible for at least 1000ms
+  const [transcriptText] = await Promise.all([transcriptPromise, delay(1000)]);
 
   if (onProgress) onProgress('AI_PLANNING');
   const contextBlock = buildYoutubeContextBlock(url, metadata, extraContext, transcriptText);
@@ -249,13 +256,17 @@ export async function parseYoutubeRoutine(
     extraContext.trim().length > 30;
 
   if (!hasRichContext) {
+    // Add a small delay for realistic UX transition
+    await delay(1200);
     return getMockRoutine(url, extraContext, contextBlock);
   }
 
   const prompt = YOUTUBE_ROUTINE_PROMPT(contextBlock);
 
   try {
-    const rawResponse = await runAiPrompt(prompt, config, true, 0.2);
+    const aiPromise = runAiPrompt(prompt, config, true, 0.2);
+    // Guarantee AI_PLANNING step is visible for at least 1200ms
+    const [rawResponse] = await Promise.all([aiPromise, delay(1200)]);
     const cleanJsonStr = rawResponse.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed: RawRoutineResponse = JSON.parse(cleanJsonStr);
     
@@ -275,6 +286,8 @@ export async function parseYoutubeRoutine(
     if (err.message && err.message.includes('운동 영상이 아닙니다')) {
       throw err;
     }
+    // Add small delay to simulate routine finalization on fallback
+    await delay(1000);
     return getMockRoutine(url, extraContext, contextBlock);
   }
 }
