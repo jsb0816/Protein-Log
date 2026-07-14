@@ -142,7 +142,7 @@ export const CalendarTab: React.FC = () => {
           </span>
           {/* Mode Badge */}
           {modeInfo && (
-            <span className={`text-[8px] font-black px-1 py-0.2 rounded border scale-90 ${modeInfo.color}`}>
+            <span className={`text-[8px] font-black px-1 py-0.2 rounded border scale-90 whitespace-nowrap ${modeInfo.color}`}>
               {modeInfo.label}
             </span>
           )}
@@ -337,19 +337,19 @@ export const CalendarTab: React.FC = () => {
 
       {/* Grid Legend Card */}
       <div className="bg-white rounded-2xl p-3 border border-slate-100 text-[10px] font-bold text-slate-400 flex flex-wrap justify-around items-center gap-2">
-        <span className="flex items-center gap-1.5">
+        <span className="flex items-center gap-1.5 whitespace-nowrap">
           <span className="px-1 py-0.5 rounded border bg-red-50 text-red-600 border-red-100 text-[8px] flex items-center justify-center font-black scale-90">벌크</span>
           벌크업
         </span>
-        <span className="flex items-center gap-1.5">
+        <span className="flex items-center gap-1.5 whitespace-nowrap">
           <span className="px-1 py-0.5 rounded border bg-orange-50 text-orange-600 border-orange-100 text-[8px] flex items-center justify-center font-black scale-90">린매</span>
           린매스업
         </span>
-        <span className="flex items-center gap-1.5">
+        <span className="flex items-center gap-1.5 whitespace-nowrap">
           <span className="px-1 py-0.5 rounded border bg-sky-50 text-sky-600 border-sky-100 text-[8px] flex items-center justify-center font-black scale-90">컷팅</span>
           다이어트
         </span>
-        <span className="flex items-center gap-1.5">
+        <span className="flex items-center gap-1.5 whitespace-nowrap">
           <span className="px-1 py-0.5 rounded border bg-emerald-50 text-emerald-600 border-emerald-100 text-[8px] flex items-center justify-center font-black scale-90">유지</span>
           유지어터
         </span>
