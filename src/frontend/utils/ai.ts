@@ -1,5 +1,5 @@
 import type { ApiConfig, WorkoutRoutine, RoutineExercise } from '../context/AppContext';
-import { buildYoutubeContextBlock, fetchYoutubeMetadata } from './youtube';
+import { buildYoutubeContextBlock, fetchYoutubeMetadata, fetchYoutubeTranscript } from './youtube';
 import {
   extractExercisesFromText,
   normalizeParsedExercise,
@@ -232,12 +232,20 @@ function postProcessRoutine(parsed: RawRoutineResponse): WorkoutRoutine {
 export async function parseYoutubeRoutine(
   url: string,
   extraContext: string,
-  config: ApiConfig
+  config: ApiConfig,
+  onProgress?: (step: 'METADATA' | 'TRANSCRIPT' | 'AI_PLANNING') => void
 ): Promise<WorkoutRoutine> {
+  if (onProgress) onProgress('METADATA');
   const metadata = await fetchYoutubeMetadata(url);
-  const contextBlock = buildYoutubeContextBlock(url, metadata, extraContext);
+
+  if (onProgress) onProgress('TRANSCRIPT');
+  const transcriptText = await fetchYoutubeTranscript(url);
+
+  if (onProgress) onProgress('AI_PLANNING');
+  const contextBlock = buildYoutubeContextBlock(url, metadata, extraContext, transcriptText);
   const hasRichContext =
     Boolean(metadata?.title) ||
+    Boolean(transcriptText) ||
     extraContext.trim().length > 30;
 
   if (!hasRichContext) {

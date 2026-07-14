@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
-import type { MealType, FoodItem } from '../context/AppContext';
-import { BottomSheet } from './BottomSheet';
-import { recommendDiet } from '../utils/ai';
-import type { DietRecommendationResult, RecommendedMeal } from '../utils/ai';
+import { useApp } from '../../context/AppContext';
+import type { MealType, FoodItem } from '../../context/AppContext';
+import { BottomSheet } from '../common/BottomSheet';
+import { recommendDiet } from '../../utils/ai';
+import type { DietRecommendationResult, RecommendedMeal } from '../../utils/ai';
 import { ClipboardList, Plus, Trash2, Refrigerator, Sparkles, AlertCircle, Info, Heart, Check } from 'lucide-react';
 
 export const DietTab: React.FC = () => {
@@ -690,7 +690,7 @@ export const DietTab: React.FC = () => {
                                 <>
                                   <Check className="w-3 h-3" />
                                   등록 완료
-                                </>
+                                  </>
                               ) : (
                                 <>
                                   <Heart className="w-3 h-3 fill-current" />

@@ -41,10 +41,30 @@ export async function fetchYoutubeMetadata(url: string): Promise<YoutubeMetadata
   }
 }
 
+export async function fetchYoutubeTranscript(urlOrId: string): Promise<string | null> {
+  const videoId = extractYoutubeVideoId(urlOrId);
+  if (!videoId) return null;
+
+  try {
+    const response = await fetch(`/api/transcript?videoId=${videoId}`);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.warn('[fetchYoutubeTranscript] API responded with error:', errorData.error);
+      return null;
+    }
+    const data = await response.json();
+    return data.transcript || null;
+  } catch (err) {
+    console.error('[fetchYoutubeTranscript] Failed to fetch:', err);
+    return null;
+  }
+}
+
 export function buildYoutubeContextBlock(
   url: string,
   metadata: YoutubeMetadata | null,
-  extraContext: string
+  extraContext: string,
+  transcriptText?: string | null
 ): string {
   const parts: string[] = [];
 
@@ -60,8 +80,12 @@ export function buildYoutubeContextBlock(
 
   parts.push(`[유튜브 URL] ${url}`);
 
+  if (transcriptText?.trim()) {
+    parts.push(`[영상 자동 추출 자막 스크립트]\n${transcriptText.trim()}`);
+  }
+
   if (extraContext.trim()) {
-    parts.push(`[사용자 제공 자막/설명/멘트]\n${extraContext.trim()}`);
+    parts.push(`[사용자 제공 추가 정보]\n${extraContext.trim()}`);
   }
 
   return parts.join('\n');

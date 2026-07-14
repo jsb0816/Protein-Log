@@ -462,8 +462,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-
-
   const registerMeal = (meal: Omit<FoodItem, 'id' | 'mealType'>) => {
     setRegisteredMeals((prev) => {
       if (prev.some((m) => m.name.toLowerCase() === meal.name.toLowerCase())) return prev;

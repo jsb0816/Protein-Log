@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
-import type { UserProfile, ApiConfig } from '../context/AppContext';
+import { useApp } from '../../context/AppContext';
+import type { UserProfile, ApiConfig } from '../../context/AppContext';
 import { User, Activity, Award, Key, RefreshCw, Eye, EyeOff } from 'lucide-react';
 
 export const SettingsTab: React.FC = () => {

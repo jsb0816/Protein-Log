@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
-import { ProgressBar } from './ProgressBar';
-import { getBackseatCoachFeedback, getLocalCoachFeedback } from '../utils/ai';
+import { useApp } from '../../context/AppContext';
+import { ProgressBar } from '../common/ProgressBar';
+import { getBackseatCoachFeedback, getLocalCoachFeedback } from '../../utils/ai';
 import { Dumbbell, Calendar, Info, RefreshCw, Sparkles, Flame, Shield } from 'lucide-react';
 
 export const DashboardTab: React.FC<{ setActiveTab: (tab: string) => void }> = ({ setActiveTab }) => {

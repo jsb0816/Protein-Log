@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
-import type { WorkoutExercise, WorkoutSet } from '../context/AppContext';
-import { BottomSheet } from './BottomSheet';
-import { parseYoutubeRoutine } from '../utils/ai';
+import { useApp } from '../../context/AppContext';
+import type { WorkoutExercise, WorkoutSet } from '../../context/AppContext';
+import { BottomSheet } from '../common/BottomSheet';
+import { parseYoutubeRoutine } from '../../utils/ai';
 import { Dumbbell, Plus, CheckCircle, Info, Sparkles, FolderHeart, Save, Edit3, Trash2 } from 'lucide-react';
 
 const YoutubeIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -31,6 +31,7 @@ export const WorkoutTab: React.FC = () => {
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [youtubeContext, setYoutubeContext] = useState('');
   const [youtubeLoading, setYoutubeLoading] = useState(false);
+  const [youtubeProgressStep, setYoutubeProgressStep] = useState<'IDLE' | 'METADATA' | 'TRANSCRIPT' | 'AI_PLANNING'>('IDLE');
 
   const [isAddExerciseOpen, setIsAddExerciseOpen] = useState(false);
   const [customExName, setCustomExName] = useState('');
@@ -228,8 +229,14 @@ export const WorkoutTab: React.FC = () => {
     if (!youtubeUrl.trim()) return;
 
     setYoutubeLoading(true);
+    setYoutubeProgressStep('METADATA');
     try {
-      const parsedRoutine = await parseYoutubeRoutine(youtubeUrl, youtubeContext, apiConfig);
+      const parsedRoutine = await parseYoutubeRoutine(
+        youtubeUrl,
+        youtubeContext,
+        apiConfig,
+        (step) => setYoutubeProgressStep(step)
+      );
       saveCustomRoutine(parsedRoutine);
       setYoutubeUrl('');
       setYoutubeContext('');
@@ -239,6 +246,7 @@ export const WorkoutTab: React.FC = () => {
       alert(`루틴 추출 실패: ${err.message}`);
     } finally {
       setYoutubeLoading(false);
+      setYoutubeProgressStep('IDLE');
     }
   };
 
@@ -492,7 +500,10 @@ export const WorkoutTab: React.FC = () => {
               {youtubeLoading ? (
                 <>
                   <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  유튜브에서 루틴 추출 중...
+                  {youtubeProgressStep === 'METADATA' && '영상 정보 파싱 중...'}
+                  {youtubeProgressStep === 'TRANSCRIPT' && '영상 자막(스크립트) 분석 중...'}
+                  {youtubeProgressStep === 'AI_PLANNING' && 'AI 정밀 운동 루틴 설계 중...'}
+                  {youtubeProgressStep === 'IDLE' && '유튜브에서 루틴 추출 중...'}
                 </>
               ) : (
                 '루틴 추출 및 등록 시작'

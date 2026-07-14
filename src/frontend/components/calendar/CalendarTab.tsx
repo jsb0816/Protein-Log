@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
-import type { DailyDiet } from '../context/AppContext';
-import { BottomSheet } from './BottomSheet';
+import { useApp } from '../../context/AppContext';
+import type { DailyDiet } from '../../context/AppContext';
+import { BottomSheet } from '../common/BottomSheet';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Star } from 'lucide-react';
 
 export const CalendarTab: React.FC = () => {
