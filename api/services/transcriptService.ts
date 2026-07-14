@@ -10,14 +10,16 @@ export function extractVideoId(urlOrId: string): string {
 }
 
 /**
- * Fetch a URL through ScraperAPI proxy (for YouTube watch pages that block datacenter IPs).
+ * Fetch a URL through ScraperAPI proxy.
+ * For non-HTML content (like XML), we disable JavaScript rendering.
  */
-async function fetchViaScraperProxy(url: string, scraperApiKey: string): Promise<string> {
+async function fetchViaScraperProxy(url: string, scraperApiKey: string, options?: { render?: boolean }): Promise<string> {
+  const render = options?.render ?? false;
   const proxyUrl = `https://api.scraperapi.com/?api_key=${encodeURIComponent(
     scraperApiKey.trim()
-  )}&url=${encodeURIComponent(url)}`;
+  )}&url=${encodeURIComponent(url)}&render=${render}`;
 
-  console.log(`[TranscriptService] Fetching via ScraperAPI proxy...`);
+  console.log(`[TranscriptService] Fetching via ScraperAPI proxy (render=${render})...`);
   const response = await fetch(proxyUrl);
   if (!response.ok) {
     throw new Error(`ScraperAPI responded with status ${response.status}`);
@@ -26,7 +28,7 @@ async function fetchViaScraperProxy(url: string, scraperApiKey: string): Promise
 }
 
 /**
- * Direct fetch (for subtitle XML URLs that don't have IP restrictions).
+ * Direct fetch without proxy.
  */
 async function fetchDirect(url: string): Promise<string> {
   console.log(`[TranscriptService] Fetching directly (no proxy)...`);
@@ -43,13 +45,13 @@ async function fetchDirect(url: string): Promise<string> {
 }
 
 /**
- * Fetch the YouTube watch page HTML — uses ScraperAPI if key is available,
- * otherwise falls back to direct fetch.
+ * Fetch the YouTube watch page HTML.
+ * Uses ScraperAPI (with render=true for full JS rendering) if key is available.
  */
 async function fetchWatchPage(videoId: string, scraperApiKey?: string): Promise<string> {
   const url = `https://www.youtube.com/watch?v=${videoId}`;
   if (scraperApiKey && scraperApiKey.trim()) {
-    return fetchViaScraperProxy(url, scraperApiKey);
+    return fetchViaScraperProxy(url, scraperApiKey, { render: false });
   }
   return fetchDirect(url);
 }
@@ -89,18 +91,29 @@ function decodeHtmlEntities(text: string): string {
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
     .replace(/&nbsp;/g, ' ')
     .replace(/\\n/g, ' ')
     .trim();
 }
 
+/**
+ * Parse subtitle text from YouTube's timedtext XML.
+ * Handles both standard XML and potentially modified responses.
+ */
 function parseSubtitleXml(xml: string): string {
-  const matches = [...xml.matchAll(/<text[^>]*>([^<]*)<\/text>/g)];
-  console.log(`[TranscriptService] XML regex matched ${matches.length} subtitle segments`);
+  // Pattern 1: Standard YouTube XML — <text start="..." dur="...">content</text>
+  let matches = [...xml.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g)];
+  console.log(`[TranscriptService] XML parse pattern 1 matched ${matches.length} segments`);
+
+  // Pattern 2: Try with single-line content if multiline pattern fails
+  if (matches.length === 0) {
+    matches = [...xml.matchAll(/<text[^>]*>([^<]+)<\/text>/g)];
+    console.log(`[TranscriptService] XML parse pattern 2 matched ${matches.length} segments`);
+  }
 
   if (matches.length === 0) {
-    // Log a snippet of the XML for debugging
-    console.warn(`[TranscriptService] XML snippet (first 500 chars): ${xml.substring(0, 500)}`);
+    console.warn(`[TranscriptService] No segments found. XML length: ${xml.length}, first 500 chars: ${xml.substring(0, 500)}`);
     return '';
   }
 
@@ -112,6 +125,49 @@ function parseSubtitleXml(xml: string): string {
     .trim();
 }
 
+/**
+ * Fetch subtitle XML for a given caption track URL.
+ * The URL is IP-signed, so it must be fetched from the same IP that fetched the watch page.
+ * 
+ * Strategy:
+ *   1. If we used ScraperAPI for the watch page → also use ScraperAPI for XML (same IP pool)
+ *   2. If direct fetch was used → fetch XML directly
+ *   3. Fallback: try the other method if the first fails
+ */
+async function fetchSubtitleXml(baseUrl: string, usedScraperForWatchPage: boolean, scraperApiKey?: string): Promise<string> {
+  const methods: Array<() => Promise<string>> = [];
+
+  if (usedScraperForWatchPage && scraperApiKey) {
+    // Primary: ScraperAPI (same IP pool as watch page → signature matches)
+    methods.push(() => fetchViaScraperProxy(baseUrl, scraperApiKey, { render: false }));
+    // Fallback: direct (in case IP-locking isn't strict)
+    methods.push(() => fetchDirect(baseUrl));
+  } else {
+    // Primary: direct
+    methods.push(() => fetchDirect(baseUrl));
+    // Fallback: ScraperAPI if available
+    if (scraperApiKey) {
+      methods.push(() => fetchViaScraperProxy(baseUrl, scraperApiKey, { render: false }));
+    }
+  }
+
+  for (let i = 0; i < methods.length; i++) {
+    try {
+      const xml = await methods[i]();
+      if (xml && xml.trim().length > 0) {
+        console.log(`[TranscriptService] Subtitle XML fetched (method ${i + 1}), length: ${xml.length}`);
+        return xml;
+      } else {
+        console.warn(`[TranscriptService] Subtitle XML method ${i + 1} returned empty`);
+      }
+    } catch (err: any) {
+      console.warn(`[TranscriptService] Subtitle XML method ${i + 1} failed: ${err.message}`);
+    }
+  }
+
+  return '';
+}
+
 export async function fetchTranscriptText(urlOrId: string): Promise<string> {
   const videoId = extractVideoId(urlOrId);
   if (videoId.length !== 11) {
@@ -119,6 +175,7 @@ export async function fetchTranscriptText(urlOrId: string): Promise<string> {
   }
 
   const scraperApiKey = process.env.SCRAPER_API_KEY;
+  const usedScraperForWatchPage = !!(scraperApiKey && scraperApiKey.trim());
   const errors: string[] = [];
 
   // ──── Strategy 1: Custom HTML scraping → extract caption track → fetch subtitle XML ────
@@ -135,7 +192,6 @@ export async function fetchTranscriptText(urlOrId: string): Promise<string> {
     } else {
       const playerResponse = JSON.parse(jsonStr);
 
-      // Check playability — if YouTube blocked the request, skip to fallback
       const playabilityStatus = playerResponse.playabilityStatus?.status;
       if (playabilityStatus && playabilityStatus !== 'OK') {
         const reason = playerResponse.playabilityStatus?.reason || 'Unknown';
@@ -161,18 +217,8 @@ export async function fetchTranscriptText(urlOrId: string): Promise<string> {
           if (selectedTrack?.baseUrl) {
             console.log(`[TranscriptService] Found caption track: ${selectedTrack.languageCode}`);
 
-            // ★ KEY FIX: Fetch subtitle XML DIRECTLY — timedtext API doesn't block datacenter IPs.
-            // ScraperAPI can corrupt XML by wrapping it in HTML or altering content.
-            let xml = '';
-            try {
-              xml = await fetchDirect(selectedTrack.baseUrl);
-            } catch (directErr: any) {
-              console.warn(`[TranscriptService] Direct XML fetch failed (${directErr.message}), trying via proxy...`);
-              // Only use proxy as last resort for XML
-              if (scraperApiKey) {
-                xml = await fetchViaScraperProxy(selectedTrack.baseUrl, scraperApiKey);
-              }
-            }
+            // ★ KEY: Fetch XML using same IP pool as the watch page (signature is IP-bound)
+            const xml = await fetchSubtitleXml(selectedTrack.baseUrl, usedScraperForWatchPage, scraperApiKey);
 
             if (xml) {
               const text = parseSubtitleXml(xml);
@@ -180,11 +226,10 @@ export async function fetchTranscriptText(urlOrId: string): Promise<string> {
                 console.log(`[TranscriptService] ✅ Strategy 1 SUCCESS (${selectedTrack.languageCode}, ${text.length} chars)`);
                 return text;
               } else {
-                console.warn('[TranscriptService] XML was fetched but no subtitle text could be parsed');
-                errors.push('Custom scraper: XML fetched but text extraction returned empty');
+                errors.push('Custom scraper: XML fetched but subtitle text parsing returned empty');
               }
             } else {
-              errors.push('Custom scraper: XML fetch returned empty');
+              errors.push('Custom scraper: All XML fetch methods returned empty');
             }
           } else {
             errors.push('Custom scraper: selectedTrack has no baseUrl');
@@ -193,7 +238,7 @@ export async function fetchTranscriptText(urlOrId: string): Promise<string> {
       }
     }
   } catch (customErr: any) {
-    console.warn('[TranscriptService] Strategy 1 failed:', customErr.message || customErr);
+    console.warn('[TranscriptService] Strategy 1 exception:', customErr.message || customErr);
     errors.push(`Custom scraper exception: ${customErr.message}`);
   }
 
