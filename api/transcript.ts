@@ -1,4 +1,4 @@
-import { fetchTranscriptText } from '../src/backend/services/transcriptService';
+import { fetchTranscriptText } from './services/transcriptService.js';
 
 export default async function handler(req: any, res: any) {
   // Handle CORS options preflight

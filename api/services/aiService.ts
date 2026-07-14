@@ -33,11 +33,11 @@ export async function generateContent(prompt: string, responseJson?: boolean): P
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+    const errorData = (await response.json().catch(() => ({}))) as any;
     throw new Error(errorData.error?.message || `Gemini API 호출 중 오류가 발생했습니다 (코드 ${response.status}).`);
   }
 
-  const data = await response.json();
+  const data = (await response.json()) as any;
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) {
     throw new Error('Gemini API로부터 빈 응답이 반환되었습니다.');

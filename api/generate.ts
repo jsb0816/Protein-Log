@@ -1,4 +1,4 @@
-import { generateContent } from '../src/backend/services/aiService';
+import { generateContent } from './services/aiService.js';
 
 export default async function handler(req: any, res: any) {
   // Allow only POST requests
