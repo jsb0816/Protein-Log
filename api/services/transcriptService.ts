@@ -1,6 +1,7 @@
 import { YoutubeTranscript } from 'youtube-transcript';
 
 const RE_YOUTUBE = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 export function extractVideoId(urlOrId: string): string {
   const match = urlOrId.match(RE_YOUTUBE);
@@ -8,43 +9,60 @@ export function extractVideoId(urlOrId: string): string {
   return urlOrId.trim();
 }
 
-async function fetchWithProxy(url: string, scraperApiKey?: string): Promise<string> {
-  if (scraperApiKey && scraperApiKey.trim()) {
-    const proxyUrl = `https://api.scraperapi.com/?api_key=${encodeURIComponent(
-      scraperApiKey.trim()
-    )}&url=${encodeURIComponent(url)}`;
-    
-    console.log(`[TranscriptService] Fetching via ScraperAPI proxy...`);
-    const response = await fetch(proxyUrl);
-    if (!response.ok) {
-      throw new Error(`ScraperAPI responded with status ${response.status}`);
-    }
-    return response.text();
-  } else {
-    const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-    console.log(`[TranscriptService] Fetching directly (no ScraperAPI key)...`);
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': USER_AGENT,
-        'Accept-Language': 'ko,en-US;q=0.9,en;q=0.8'
-      }
-    });
-    if (!response.ok) {
-      throw new Error(`Direct fetch responded with status ${response.status}`);
-    }
-    return response.text();
+/**
+ * Fetch a URL through ScraperAPI proxy (for YouTube watch pages that block datacenter IPs).
+ */
+async function fetchViaScraperProxy(url: string, scraperApiKey: string): Promise<string> {
+  const proxyUrl = `https://api.scraperapi.com/?api_key=${encodeURIComponent(
+    scraperApiKey.trim()
+  )}&url=${encodeURIComponent(url)}`;
+
+  console.log(`[TranscriptService] Fetching via ScraperAPI proxy...`);
+  const response = await fetch(proxyUrl);
+  if (!response.ok) {
+    throw new Error(`ScraperAPI responded with status ${response.status}`);
   }
+  return response.text();
+}
+
+/**
+ * Direct fetch (for subtitle XML URLs that don't have IP restrictions).
+ */
+async function fetchDirect(url: string): Promise<string> {
+  console.log(`[TranscriptService] Fetching directly (no proxy)...`);
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': USER_AGENT,
+      'Accept-Language': 'ko,en-US;q=0.9,en;q=0.8'
+    }
+  });
+  if (!response.ok) {
+    throw new Error(`Direct fetch responded with status ${response.status}`);
+  }
+  return response.text();
+}
+
+/**
+ * Fetch the YouTube watch page HTML — uses ScraperAPI if key is available,
+ * otherwise falls back to direct fetch.
+ */
+async function fetchWatchPage(videoId: string, scraperApiKey?: string): Promise<string> {
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+  if (scraperApiKey && scraperApiKey.trim()) {
+    return fetchViaScraperProxy(url, scraperApiKey);
+  }
+  return fetchDirect(url);
 }
 
 function extractJsonUsingBraces(html: string): string | null {
   const marker = 'var ytInitialPlayerResponse = ';
   const index = html.indexOf(marker);
   if (index === -1) return null;
-  
+
   const startPos = index + marker.length;
   const firstBrace = html.indexOf('{', startPos);
   if (firstBrace === -1) return null;
-  
+
   let braceCount = 0;
   let endPos = -1;
   for (let i = firstBrace; i < html.length; i++) {
@@ -59,7 +77,7 @@ function extractJsonUsingBraces(html: string): string | null {
       }
     }
   }
-  
+
   if (endPos === -1) return null;
   return html.substring(firstBrace, endPos);
 }
@@ -76,6 +94,24 @@ function decodeHtmlEntities(text: string): string {
     .trim();
 }
 
+function parseSubtitleXml(xml: string): string {
+  const matches = [...xml.matchAll(/<text[^>]*>([^<]*)<\/text>/g)];
+  console.log(`[TranscriptService] XML regex matched ${matches.length} subtitle segments`);
+
+  if (matches.length === 0) {
+    // Log a snippet of the XML for debugging
+    console.warn(`[TranscriptService] XML snippet (first 500 chars): ${xml.substring(0, 500)}`);
+    return '';
+  }
+
+  return matches
+    .map((m: RegExpMatchArray) => decodeHtmlEntities(m[1]))
+    .filter((t: string) => t.length > 0)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export async function fetchTranscriptText(urlOrId: string): Promise<string> {
   const videoId = extractVideoId(urlOrId);
   if (videoId.length !== 11) {
@@ -85,30 +121,35 @@ export async function fetchTranscriptText(urlOrId: string): Promise<string> {
   const scraperApiKey = process.env.SCRAPER_API_KEY;
   const errors: string[] = [];
 
-  // ──── Strategy 1: Custom HTML scraping (ScraperAPI proxy or direct) ────
+  // ──── Strategy 1: Custom HTML scraping → extract caption track → fetch subtitle XML ────
   try {
     console.log(`[TranscriptService] Strategy 1: Custom scraper for video ${videoId}`);
-    const html = await fetchWithProxy(`https://www.youtube.com/watch?v=${videoId}`, scraperApiKey);
+    const html = await fetchWatchPage(videoId, scraperApiKey);
     console.log(`[TranscriptService] HTML fetched. Length: ${html.length}`);
-    
+
     const jsonStr = extractJsonUsingBraces(html);
-    
-    if (jsonStr) {
+
+    if (!jsonStr) {
+      console.warn('[TranscriptService] ytInitialPlayerResponse marker not found in HTML');
+      errors.push('Custom scraper: ytInitialPlayerResponse marker not found');
+    } else {
       const playerResponse = JSON.parse(jsonStr);
-      
-      // Check playability status — if YouTube blocked the request, skip to fallback
+
+      // Check playability — if YouTube blocked the request, skip to fallback
       const playabilityStatus = playerResponse.playabilityStatus?.status;
       if (playabilityStatus && playabilityStatus !== 'OK') {
         const reason = playerResponse.playabilityStatus?.reason || 'Unknown';
         console.warn(`[TranscriptService] YouTube playability blocked: ${playabilityStatus} - ${reason}`);
         errors.push(`Custom scraper: YouTube blocked (${playabilityStatus}: ${reason})`);
-        // Don't return, fall through to next strategy
       } else {
         const tracklist = playerResponse.captions?.playerCaptionsTracklistRenderer;
         const captionTracks = tracklist?.captionTracks;
 
-        if (Array.isArray(captionTracks) && captionTracks.length > 0) {
-          // Find best language track: Korean first, English second, fallback to first
+        if (!Array.isArray(captionTracks) || captionTracks.length === 0) {
+          console.warn('[TranscriptService] No caption tracks found in playerResponse');
+          errors.push('Custom scraper: No caption tracks in playerResponse');
+        } else {
+          // Find best language track: Korean → English → first available
           let selectedTrack = captionTracks.find((t: any) => t.languageCode === 'ko');
           if (!selectedTrack) {
             selectedTrack = captionTracks.find((t: any) => t.languageCode === 'en');
@@ -117,34 +158,39 @@ export async function fetchTranscriptText(urlOrId: string): Promise<string> {
             selectedTrack = captionTracks[0];
           }
 
-          if (selectedTrack && selectedTrack.baseUrl) {
+          if (selectedTrack?.baseUrl) {
             console.log(`[TranscriptService] Found caption track: ${selectedTrack.languageCode}`);
-            // Fetch XML subtitles
-            const xml = await fetchWithProxy(selectedTrack.baseUrl, scraperApiKey);
-            const matches = [...xml.matchAll(/<text[^>]*>([^<]*)<\/text>/g)];
-            
-            if (matches.length > 0) {
-              const text = matches
-                .map((m: RegExpMatchArray) => decodeHtmlEntities(m[1]))
-                .filter((t: string) => t.length > 0)
-                .join(' ')
-                .replace(/\s+/g, ' ')
-                .trim();
-              
+
+            // ★ KEY FIX: Fetch subtitle XML DIRECTLY — timedtext API doesn't block datacenter IPs.
+            // ScraperAPI can corrupt XML by wrapping it in HTML or altering content.
+            let xml = '';
+            try {
+              xml = await fetchDirect(selectedTrack.baseUrl);
+            } catch (directErr: any) {
+              console.warn(`[TranscriptService] Direct XML fetch failed (${directErr.message}), trying via proxy...`);
+              // Only use proxy as last resort for XML
+              if (scraperApiKey) {
+                xml = await fetchViaScraperProxy(selectedTrack.baseUrl, scraperApiKey);
+              }
+            }
+
+            if (xml) {
+              const text = parseSubtitleXml(xml);
               if (text) {
                 console.log(`[TranscriptService] ✅ Strategy 1 SUCCESS (${selectedTrack.languageCode}, ${text.length} chars)`);
                 return text;
+              } else {
+                console.warn('[TranscriptService] XML was fetched but no subtitle text could be parsed');
+                errors.push('Custom scraper: XML fetched but text extraction returned empty');
               }
+            } else {
+              errors.push('Custom scraper: XML fetch returned empty');
             }
+          } else {
+            errors.push('Custom scraper: selectedTrack has no baseUrl');
           }
-        } else {
-          console.warn('[TranscriptService] No caption tracks found in playerResponse');
-          errors.push('Custom scraper: No caption tracks in playerResponse');
         }
       }
-    } else {
-      console.warn('[TranscriptService] ytInitialPlayerResponse not found in HTML');
-      errors.push('Custom scraper: ytInitialPlayerResponse marker not found');
     }
   } catch (customErr: any) {
     console.warn('[TranscriptService] Strategy 1 failed:', customErr.message || customErr);
@@ -155,14 +201,14 @@ export async function fetchTranscriptText(urlOrId: string): Promise<string> {
   try {
     console.log(`[TranscriptService] Strategy 2: youtube-transcript library for video ${videoId}`);
     const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId);
-    
+
     if (transcriptItems && transcriptItems.length > 0) {
       const text = transcriptItems
         .map((item: any) => item.text)
         .join(' ')
         .replace(/\s+/g, ' ')
         .trim();
-      
+
       if (text) {
         console.log(`[TranscriptService] ✅ Strategy 2 SUCCESS (${text.length} chars)`);
         return text;
