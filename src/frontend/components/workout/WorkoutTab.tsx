@@ -459,9 +459,16 @@ export const WorkoutTab: React.FC = () => {
       {/* YouTube Routine Parser Modal */}
       <BottomSheet isOpen={isYoutubeOpen} onClose={() => setIsYoutubeOpen(false)} title="유튜브 루틴 AI 추출기">
         <form onSubmit={handleYoutubeSubmit} className="space-y-4 font-sans text-xs">
+          <div className="bg-amber-50 text-amber-800 p-3.5 rounded-xl border border-amber-100 flex items-start gap-2.5">
+            <Info className="w-4.5 h-4.5 text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-[10.5px] leading-relaxed font-semibold">
+              아직 고도화 중입니다. 정확한 유튜브 연동을 원하시면 반드시 유튜브 스크립트를 전체복사한 후 아래 "자막 복사본" 칸에 붙여넣어서 사용하세요.
+            </p>
+          </div>
+
           {!apiConfig.key && (
-            <div className="bg-amber-50 text-amber-700 p-3 rounded-xl border border-amber-100 flex items-start gap-2 mb-1">
-              <Sparkles className="w-4.5 h-4.5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="bg-slate-50 text-slate-700 p-3 rounded-xl border border-slate-100 flex items-start gap-2 mb-1">
+              <Sparkles className="w-4.5 h-4.5 text-sky-600 shrink-0 mt-0.5" />
               <p className="text-[10px] leading-relaxed">
                 API Key가 없어도 서버 프록시를 통해 AI 분석을 시도합니다. 정확도를 높이려면 영상 자막이나 설명을 함께 붙여넣어 주세요. 영상 제목은 URL 입력 시 자동으로 가져옵니다.
               </p>
