@@ -71,21 +71,56 @@ export function buildExerciseDisplayName(raw: ParsedExerciseRaw): string {
   const koParts: string[] = [];
   const enParts: string[] = [];
 
-  if (raw.angle && VALID_ANGLES.has(raw.angle)) {
-    koParts.push(ANGLE_KO[raw.angle]);
-    enParts.push(ANGLE_EN[raw.angle]);
+  const eqKo = raw.equipment && VALID_EQUIPMENT.has(raw.equipment) ? (raw.equipment === 'smith' ? '스미스 머신' : EQUIPMENT_KO[raw.equipment]) : '';
+  const eqEn = raw.equipment && VALID_EQUIPMENT.has(raw.equipment) ? (raw.equipment === 'smith' ? 'Smith Machine' : EQUIPMENT_EN[raw.equipment]) : '';
+
+  const angKo = raw.angle && VALID_ANGLES.has(raw.angle) ? ANGLE_KO[raw.angle] : '';
+  const angEn = raw.angle && VALID_ANGLES.has(raw.angle) ? ANGLE_EN[raw.angle] : '';
+
+  let cleanBaseKo = raw.baseExercise.trim();
+  let cleanBaseEn = raw.baseExerciseEn.trim();
+
+  // Helper to strip prefix (case insensitive for EN, literal for KO)
+  const stripPrefixKo = (str: string, prefix: string) => {
+    if (!prefix) return str;
+    if (str.startsWith(prefix)) {
+      return str.substring(prefix.length).trim();
+    }
+    return str;
+  };
+
+  const stripPrefixEn = (str: string, prefix: string) => {
+    if (!prefix) return str;
+    const regex = new RegExp(`^${prefix}\\b`, 'i');
+    if (regex.test(str)) {
+      return str.replace(regex, '').trim();
+    }
+    return str;
+  };
+
+  // Recursively strip any order of prefixes to avoid duplication (e.g., "시티드 케이블 로우" -> strip "시티드" -> "케이블 로우" -> strip "케이블" -> "로우")
+  let prevKo = '';
+  let prevEn = '';
+  while (cleanBaseKo !== prevKo || cleanBaseEn !== prevEn) {
+    prevKo = cleanBaseKo;
+    prevEn = cleanBaseEn;
+    
+    cleanBaseKo = stripPrefixKo(cleanBaseKo, eqKo);
+    cleanBaseKo = stripPrefixKo(cleanBaseKo, angKo);
+    
+    cleanBaseEn = stripPrefixEn(cleanBaseEn, eqEn);
+    cleanBaseEn = stripPrefixEn(cleanBaseEn, angEn);
   }
 
-  if (raw.equipment === 'smith') {
-    koParts.push('스미스 머신');
-    enParts.push('Smith Machine');
-  } else if (raw.equipment && VALID_EQUIPMENT.has(raw.equipment)) {
-    koParts.push(EQUIPMENT_KO[raw.equipment]);
-    enParts.push(EQUIPMENT_EN[raw.equipment]);
-  }
+  // Re-build final strings with single clean prefixes
+  if (angKo) koParts.push(angKo);
+  if (angEn) enParts.push(angEn);
 
-  koParts.push(raw.baseExercise.trim());
-  enParts.push(raw.baseExerciseEn.trim());
+  if (eqKo) koParts.push(eqKo);
+  if (eqEn) enParts.push(eqEn);
+
+  koParts.push(cleanBaseKo);
+  enParts.push(cleanBaseEn);
 
   if (raw.grip?.trim()) {
     koParts.push(`(${raw.grip.trim()} 그립)`);

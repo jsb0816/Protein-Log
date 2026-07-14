@@ -137,6 +137,7 @@ export const SettingsTab: React.FC = () => {
         
         <p className="text-xs text-slate-400 mb-4 leading-relaxed">
           골격근량과 체지방률을 등록하시면 BMR 계산법이 보다 정밀한 **캐치-맥아들 공식**으로 자동 보정되며, 훈수충 AI가 보다 칼날 같은 잔소리를 날립니다.
+          <span className="block text-[10px] text-sky-500 font-bold mt-1">※ 추후 고도화 업데이트 예정</span>
         </p>
 
         <div className="grid grid-cols-2 gap-4">

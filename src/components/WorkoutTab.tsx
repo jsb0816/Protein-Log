@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import type { WorkoutExercise, WorkoutSet } from '../context/AppContext';
 import { BottomSheet } from './BottomSheet';
 import { parseYoutubeRoutine } from '../utils/ai';
-import { Dumbbell, Plus, RefreshCw, CheckCircle, Info, Sparkles } from 'lucide-react';
+import { Dumbbell, Plus, CheckCircle, Info, Sparkles, FolderHeart, Save, Edit3, Trash2 } from 'lucide-react';
 
 const YoutubeIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
@@ -17,10 +17,14 @@ export const WorkoutTab: React.FC = () => {
     workoutLogs,
     currentRoutine,
     userProfile,
-    generateAutoRoutine,
     saveCustomRoutine,
     saveWorkoutLog,
     completeWorkout,
+    savedRoutines,
+    renameActiveRoutine,
+    saveRoutineToList,
+    deleteRoutineFromList,
+    renameRoutineInList,
   } = useApp();
 
   const [isYoutubeOpen, setIsYoutubeOpen] = useState(false);
@@ -33,6 +37,19 @@ export const WorkoutTab: React.FC = () => {
   const [customExSets, setCustomExSets] = useState('4');
   const [customExReps, setCustomExReps] = useState('10');
   const [customExNotes, setCustomExNotes] = useState('');
+
+  // Routine library & Custom naming states
+  const [isRenameActiveOpen, setIsRenameActiveOpen] = useState(false);
+  const [renameActiveText, setRenameActiveText] = useState('');
+  
+  const [isSaveCurrentOpen, setIsSaveCurrentOpen] = useState(false);
+  const [saveCurrentText, setSaveCurrentText] = useState('');
+
+  const [selectedRoutineForPreview, setSelectedRoutineForPreview] = useState<any | null>(null);
+
+  const [isRenameSavedOpen, setIsRenameSavedOpen] = useState(false);
+  const [renameSavedText, setRenameSavedText] = useState('');
+  const [renameSavedId, setRenameSavedId] = useState('');
 
   // Get current date string (local)
   const getTodayStr = () => {
@@ -94,6 +111,72 @@ export const WorkoutTab: React.FC = () => {
       completed: workoutCompleted,
       exercises: updatedExercises,
     });
+  };
+
+  const handleRenameActiveClick = () => {
+    if (!currentRoutine) return;
+    setRenameActiveText(currentRoutine.name);
+    setIsRenameActiveOpen(true);
+  };
+
+  const handleRenameActiveSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!renameActiveText.trim()) return;
+    renameActiveRoutine(renameActiveText);
+    setIsRenameActiveOpen(false);
+  };
+
+  const handleSaveCurrentClick = () => {
+    if (!currentRoutine) return;
+    setSaveCurrentText(currentRoutine.name);
+    setIsSaveCurrentOpen(true);
+  };
+
+  const handleSaveCurrentSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!saveCurrentText.trim()) return;
+    const exercisesList = exercises.map(ex => ({
+      name: ex.name,
+      sets: ex.sets.length,
+      reps: ex.sets[0]?.reps || 10,
+      notes: ex.notes,
+    }));
+    saveRoutineToList(saveCurrentText, exercisesList);
+    setIsSaveCurrentOpen(false);
+  };
+
+  const handleRenameSavedClick = (routine: any) => {
+    setRenameSavedId(routine.id);
+    setRenameSavedText(routine.name);
+    setIsRenameSavedOpen(true);
+  };
+
+  const handleRenameSavedSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!renameSavedText.trim() || !renameSavedId) return;
+    renameRoutineInList(renameSavedId, renameSavedText);
+    setIsRenameSavedOpen(false);
+  };
+
+  const handleRoutineClick = (routine: any) => {
+    setSelectedRoutineForPreview(routine);
+  };
+
+  const handleUseRoutine = () => {
+    if (!selectedRoutineForPreview) return;
+    
+    // Clear today's log exercises so the new routine gets loaded and calculated!
+    saveWorkoutLog(todayStr, {
+      completed: false,
+      exercises: [],
+    });
+
+    saveCustomRoutine({
+      name: selectedRoutineForPreview.name,
+      exercises: selectedRoutineForPreview.exercises,
+    });
+
+    setSelectedRoutineForPreview(null);
   };
 
   const handleSetChange = (exIdx: number, setIdx: number, field: keyof WorkoutSet, val: any) => {
@@ -168,41 +251,57 @@ export const WorkoutTab: React.FC = () => {
       {/* Program Config Card */}
       <div className="bg-white rounded-2xl p-5 shadow-xs border border-slate-100">
         {!currentRoutine ? (
-          <div className="text-center py-4">
-            <div className="w-12 h-12 rounded-full bg-sky-50 flex items-center justify-center mx-auto mb-3">
+          <div className="text-center py-5 space-y-4">
+            <div className="w-12 h-12 rounded-full bg-sky-50 flex items-center justify-center mx-auto">
               <Dumbbell className="w-6 h-6 text-sky-500" />
             </div>
-            <h3 className="text-sm font-bold text-slate-800 mb-1">맞춤형 운동 프로그램 생성</h3>
-            <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-              사용자 신체 스펙, 훈련 강도 및 인바디 데이터에 최적화된 기초 다관절 운동 루틴을 생성합니다.
-            </p>
-            <button
-              onClick={generateAutoRoutine}
-              className="bg-sky-500 hover:bg-sky-600 text-white font-bold px-6 py-2.5 rounded-xl text-xs ios-btn-press shadow-xs"
-            >
-              인바디 보정 프로그램 자동 생성
-            </button>
+            <div>
+              <h3 className="text-sm font-bold text-slate-800 mb-1">오늘의 운동 계획이 없습니다</h3>
+              <p className="text-xs text-slate-400 leading-relaxed max-w-[240px] mx-auto">
+                유튜브 운동 루틴을 연동하거나 새 운동을 추가해 일지를 시작해 보세요.
+              </p>
+            </div>
+            <div className="flex gap-2 justify-center">
+              <button
+                onClick={() => setIsYoutubeOpen(true)}
+                className="bg-red-50 text-red-500 font-bold px-4 py-2.5 rounded-xl text-xs border border-red-100 flex items-center justify-center gap-1.5 ios-btn-press"
+              >
+                <YoutubeIcon className="w-4 h-4" />
+                유튜브 연동
+              </button>
+              <button
+                onClick={() => {
+                  saveCustomRoutine({ name: '오늘의 루틴', exercises: [] });
+                }}
+                className="bg-sky-500 hover:bg-sky-600 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 ios-btn-press shadow-xs"
+              >
+                <Plus className="w-4 h-4" />
+                직접 추가 시작
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="flex justify-between items-start">
-              <div>
+            <div className="flex justify-between items-start gap-2">
+              <div className="space-y-0.5 flex-1 min-w-0 pr-2">
                 <span className="text-[10px] text-sky-500 font-bold block">활성화된 트레이닝 루틴</span>
-                <h3 className="text-sm font-extrabold text-slate-800 leading-tight">
-                  {currentRoutine.name}
-                </h3>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <h3 className="text-sm font-extrabold text-slate-800 leading-tight">
+                    {currentRoutine.name}
+                  </h3>
+                  <button
+                    onClick={handleRenameActiveClick}
+                    className="p-1 text-slate-400 hover:text-sky-500 transition-all rounded"
+                    title="이름 수정"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={generateAutoRoutine}
-                  className="bg-slate-50 text-slate-500 font-bold p-2 rounded-xl border border-slate-100 flex items-center justify-center ios-btn-press"
-                  title="루틴 재설정"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                </button>
+              <div className="flex gap-1.5 shrink-0 flex-wrap justify-end">
                 <button
                   onClick={() => setIsYoutubeOpen(true)}
-                  className="bg-red-50 text-red-500 font-bold px-3 py-2 rounded-xl text-xs border border-red-100 flex items-center justify-center gap-1 ios-btn-press"
+                  className="bg-red-50 text-red-500 font-bold px-2.5 py-2 rounded-xl text-xs border border-red-100 flex items-center justify-center gap-1.5 ios-btn-press"
                 >
                   <YoutubeIcon className="w-3.5 h-3.5" />
                   유튜브 연동
@@ -225,13 +324,23 @@ export const WorkoutTab: React.FC = () => {
         <div className="space-y-4">
           <div className="flex justify-between items-center px-1">
             <h2 className="text-sm font-bold text-slate-700">오늘의 운동 목표 세트</h2>
-            <button
-              onClick={() => setIsAddExerciseOpen(true)}
-              className="bg-sky-50 text-sky-600 font-bold px-3 py-1.5 rounded-xl border border-sky-100 text-xs flex items-center gap-1 ios-btn-press"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              종목 추가
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={handleSaveCurrentClick}
+                className="bg-sky-50 text-sky-600 font-bold px-3 py-1.5 rounded-xl border border-sky-100 text-xs flex items-center gap-1 ios-btn-press"
+                title="현재 구성을 보관함에 저장"
+              >
+                <Save className="w-3.5 h-3.5" />
+                루틴 저장
+              </button>
+              <button
+                onClick={() => setIsAddExerciseOpen(true)}
+                className="bg-sky-50 text-sky-600 font-bold px-3 py-1.5 rounded-xl border border-sky-100 text-xs flex items-center gap-1 ios-btn-press"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                종목 추가
+              </button>
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -449,6 +558,177 @@ export const WorkoutTab: React.FC = () => {
             </button>
           </div>
         </form>
+      </BottomSheet>
+
+      {/* My Routine Vault Card */}
+      <div className="bg-white rounded-2xl p-5 shadow-xs border border-slate-100 space-y-4 mt-6">
+        <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+          <div className="flex items-center gap-2">
+            <FolderHeart className="w-5 h-5 text-sky-500" />
+            <h3 className="text-sm font-bold text-slate-800">내 루틴 보관함 ({savedRoutines.length})</h3>
+          </div>
+        </div>
+        
+        {savedRoutines.length > 0 ? (
+          <div className="space-y-2 max-h-[250px] overflow-y-auto no-scrollbar">
+            {savedRoutines.map((routine) => (
+              <div 
+                key={routine.id}
+                onClick={() => handleRoutineClick(routine)}
+                className="p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-100 flex justify-between items-center cursor-pointer transition-all ios-btn-press"
+              >
+                <div className="space-y-0.5 flex-1 min-w-0 pr-2">
+                  <span className="font-bold text-xs text-slate-700 block truncate">{routine.name}</span>
+                  <span className="text-[10px] text-slate-400 font-bold block">
+                    종목 {routine.exercises.length}개
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() => handleRenameSavedClick(routine)}
+                    className="p-1.5 hover:bg-white rounded-lg text-slate-400 hover:text-sky-500 transition-all border border-transparent hover:border-slate-100"
+                    title="이름 변경"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => deleteRoutineFromList(routine.id!)}
+                    className="p-1.5 hover:bg-white rounded-lg text-slate-400 hover:text-red-500 transition-all border border-transparent hover:border-slate-100"
+                    title="삭제"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-6 text-slate-400 text-xs">
+            보관된 커스텀 운동 루틴이 없습니다.<br />유튜브 연동 후 '루틴 저장'을 눌러 나만의 루틴을 저장해 보세요!
+          </div>
+        )}
+      </div>
+
+      {/* Active Routine Rename Bottom Sheet */}
+      <BottomSheet isOpen={isRenameActiveOpen} onClose={() => setIsRenameActiveOpen(false)} title="루틴 이름 수정">
+        <form onSubmit={handleRenameActiveSubmit} className="space-y-4 font-sans text-xs">
+          <div>
+            <label className="block font-bold text-slate-500 mb-1">루틴 이름 *</label>
+            <input
+              type="text"
+              required
+              value={renameActiveText}
+              onChange={(e) => setRenameActiveText(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5 text-xs font-semibold focus:outline-none focus:border-sky-500 focus:bg-white"
+            />
+          </div>
+          <div className="pt-4">
+            <button
+              type="submit"
+              className="w-full bg-sky-500 text-white font-bold py-3.5 rounded-xl text-xs ios-btn-press hover:bg-sky-600 shadow-sm"
+            >
+              수정 완료
+            </button>
+          </div>
+        </form>
+      </BottomSheet>
+
+      {/* Save Active Routine Bottom Sheet */}
+      <BottomSheet isOpen={isSaveCurrentOpen} onClose={() => setIsSaveCurrentOpen(false)} title="루틴 보관함에 저장">
+        <form onSubmit={handleSaveCurrentSubmit} className="space-y-4 font-sans text-xs">
+          <div>
+            <label className="block font-bold text-slate-500 mb-1">저장할 루틴 이름 *</label>
+            <input
+              type="text"
+              required
+              value={saveCurrentText}
+              onChange={(e) => setSaveCurrentText(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5 text-xs font-semibold focus:outline-none focus:border-sky-500 focus:bg-white"
+            />
+          </div>
+          <div className="pt-4">
+            <button
+              type="submit"
+              className="w-full bg-sky-500 text-white font-bold py-3.5 rounded-xl text-xs ios-btn-press hover:bg-sky-600 shadow-sm"
+            >
+              보관함 저장 완료
+            </button>
+          </div>
+        </form>
+      </BottomSheet>
+
+      {/* Saved Routine Rename Bottom Sheet */}
+      <BottomSheet isOpen={isRenameSavedOpen} onClose={() => setIsRenameSavedOpen(false)} title="보관된 루틴 이름 수정">
+        <form onSubmit={handleRenameSavedSubmit} className="space-y-4 font-sans text-xs">
+          <div>
+            <label className="block font-bold text-slate-500 mb-1">새 루틴 이름 *</label>
+            <input
+              type="text"
+              required
+              value={renameSavedText}
+              onChange={(e) => setRenameSavedText(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5 text-xs font-semibold focus:outline-none focus:border-sky-500 focus:bg-white"
+            />
+          </div>
+          <div className="pt-4">
+            <button
+              type="submit"
+              className="w-full bg-sky-500 text-white font-bold py-3.5 rounded-xl text-xs ios-btn-press hover:bg-sky-600 shadow-sm"
+            >
+              수정 완료
+            </button>
+          </div>
+        </form>
+      </BottomSheet>
+
+      {/* Saved Routine Preview Bottom Sheet */}
+      <BottomSheet 
+        isOpen={selectedRoutineForPreview !== null} 
+        onClose={() => setSelectedRoutineForPreview(null)} 
+        title="루틴 상세 정보"
+      >
+        {selectedRoutineForPreview && (
+          <div className="space-y-4 font-sans text-xs">
+            <div>
+              <span className="text-[10px] text-sky-500 font-bold block mb-1">보관된 루틴 이름</span>
+              <h3 className="text-sm font-extrabold text-slate-800 leading-tight">
+                {selectedRoutineForPreview.name}
+              </h3>
+            </div>
+
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100/50 space-y-2">
+              <span className="text-[10px] text-slate-400 font-bold block mb-1">운동 종목 구성</span>
+              <div className="space-y-1.5 max-h-[200px] overflow-y-auto no-scrollbar">
+                {selectedRoutineForPreview.exercises.map((ex: any, idx: number) => (
+                  <div key={idx} className="flex items-center gap-2 text-slate-700 py-0.5">
+                    <span className="w-4 h-4 bg-sky-100 text-sky-600 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0">
+                      {idx + 1}
+                    </span>
+                    <span className="font-bold text-xs truncate">{ex.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-4">
+              <button
+                type="button"
+                onClick={() => setSelectedRoutineForPreview(null)}
+                className="w-full bg-slate-100 text-slate-500 font-bold py-3.5 rounded-xl text-xs ios-btn-press hover:bg-slate-200"
+              >
+                닫기
+              </button>
+              <button
+                type="button"
+                onClick={handleUseRoutine}
+                className="w-full bg-sky-500 text-white font-bold py-3.5 rounded-xl text-xs ios-btn-press hover:bg-sky-600 shadow-sm flex items-center justify-center gap-1"
+              >
+                <CheckCircle className="w-3.5 h-3.5" />
+                오늘의 루틴으로 사용
+              </button>
+            </div>
+          </div>
+        )}
       </BottomSheet>
     </div>
   );

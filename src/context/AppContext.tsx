@@ -74,6 +74,7 @@ export interface RoutineExercise {
 }
 
 export interface WorkoutRoutine {
+  id?: string;
   name: string;
   exercises: RoutineExercise[];
 }
@@ -106,11 +107,15 @@ interface AppContextProps {
   toggleDietMode: (date: string) => void;
   saveWorkoutLog: (date: string, workout: DailyWorkout) => void;
   completeWorkout: (date: string, completed: boolean) => void;
-  generateAutoRoutine: () => void;
   saveCustomRoutine: (routine: WorkoutRoutine) => void;
   registerMeal: (meal: Omit<FoodItem, 'id' | 'mealType'>) => void;
   removeRegisteredMeal: (name: string) => void;
   resetAllData: () => void;
+  savedRoutines: WorkoutRoutine[];
+  renameActiveRoutine: (newName: string) => void;
+  saveRoutineToList: (name: string, exercises: RoutineExercise[]) => void;
+  deleteRoutineFromList: (id: string) => void;
+  renameRoutineInList: (id: string, newName: string) => void;
 }
 
 const AppContext = createContext<AppContextProps | undefined>(undefined);
@@ -171,6 +176,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : null;
   });
 
+  const [savedRoutines, setSavedRoutines] = useState<WorkoutRoutine[]>(() => {
+    const saved = localStorage.getItem('pl_saved_routines');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [registeredMeals, setRegisteredMeals] = useState<Omit<FoodItem, 'id' | 'mealType'>[]>(() => {
     const saved = localStorage.getItem('pl_registered_meals');
     return saved ? JSON.parse(saved) : defaultMeals;
@@ -204,6 +214,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.removeItem('pl_routine');
     }
   }, [currentRoutine]);
+
+  useEffect(() => {
+    localStorage.setItem('pl_saved_routines', JSON.stringify(savedRoutines));
+  }, [savedRoutines]);
 
   useEffect(() => {
     localStorage.setItem('pl_registered_meals', JSON.stringify(registeredMeals));
@@ -253,33 +267,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // 3. TDEE Calculations
   const tdee = bmr * activityLevel;
 
-  // 4. Target Calories & Protein based on Mode & InBody compensation
+  // 4. Target Calories & Protein based on Mode & InBody compensation (Adapted by Gender)
   let targetCalories = tdee;
-  let targetProtein = weight * 1.4; // Default maintain midpoint
+  const isMale = gender === 'male';
+  let targetProtein = weight * (isMale ? 1.4 : 1.2); // Default maintain midpoint
 
   switch (mode) {
     case 'maintain':
       targetCalories = tdee;
-      // Protein range: 1.2 ~ 1.6
-      targetProtein = weight * (isHighMuscle ? 1.6 : 1.4);
+      // Protein range: Male 1.4~1.6, Female 1.2~1.4
+      targetProtein = weight * (isMale 
+        ? (isHighMuscle ? 1.6 : 1.4) 
+        : (isHighMuscle ? 1.4 : 1.2)
+      );
       break;
     case 'leanmass':
-      targetCalories = tdee + 250;
-      // Protein range: 1.8 ~ 2.2
-      targetProtein = weight * (isHighMuscle ? 2.2 : 2.0);
+      // Calorie surplus: Male +250, Female +200
+      targetCalories = tdee + (isMale ? 250 : 200);
+      // Protein range: Male 2.0~2.2, Female 1.6~1.8
+      targetProtein = weight * (isMale 
+        ? (isHighMuscle ? 2.2 : 2.0) 
+        : (isHighMuscle ? 1.8 : 1.6)
+      );
       break;
     case 'bulk':
-      targetCalories = tdee + 500;
-      // Protein range: 2.0 ~ 2.4
-      targetProtein = weight * (isHighMuscle ? 2.4 : 2.2);
+      // Calorie surplus: Male +500, Female +350
+      targetCalories = tdee + (isMale ? 500 : 350);
+      // Protein range: Male 2.2~2.4, Female 1.8~2.0
+      targetProtein = weight * (isMale 
+        ? (isHighMuscle ? 2.4 : 2.2) 
+        : (isHighMuscle ? 2.0 : 1.8)
+      );
       break;
     case 'cut':
-      targetCalories = tdee - 500;
-      // Protein range: 1.6 ~ 2.0
-      targetProtein = weight * (isHighMuscle ? 2.0 : 1.8);
+      // Calorie deficit: Male -500, Female -350 (More sustainable hurdle for women)
+      targetCalories = tdee - (isMale ? 500 : 350);
+      // Protein range: Male 1.8~2.0, Female 1.4~1.6
+      targetProtein = weight * (isMale 
+        ? (isHighMuscle ? 2.0 : 1.8) 
+        : (isHighMuscle ? 1.6 : 1.4)
+      );
       // High bodyfat cuts: slightly restrict calorie target more or suggest it
       if (isHighBodyFat) {
-        targetCalories = tdee - 550; // extra cut
+        targetCalories = tdee - (isMale ? 550 : 400); // extra cut
       }
       break;
   }
@@ -405,79 +435,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentRoutine(routine);
   };
 
-  // Generate customized standard workouts based on user profile and InBody
-  const generateAutoRoutine = () => {
-    const isMuscleLow = inbody.muscleMass !== undefined && (
-      (gender === 'male' && inbody.muscleMass / weight < 0.32) ||
-      (gender === 'female' && inbody.muscleMass / weight < 0.25)
-    );
-
-    let routineName = '';
-    let exercises: RoutineExercise[] = [];
-
-    // Routine naming and configuration based on mode and days
-    if (userProfile.mode === 'cut') {
-      routineName = `컷팅용 지방 연소 루틴 (주 ${userProfile.workoutDaysPerWeek}회)`;
-    } else if (userProfile.mode === 'bulk') {
-      routineName = `벌크업 고중량 스트렝스 루틴 (주 ${userProfile.workoutDaysPerWeek}회)`;
-    } else if (userProfile.mode === 'leanmass') {
-      routineName = `린매스업 점진적 과부하 루틴 (주 ${userProfile.workoutDaysPerWeek}회)`;
-    } else {
-      routineName = `유지어터 밸런스 루틴 (주 ${userProfile.workoutDaysPerWeek}회)`;
-    }
-
-    // InBody rule: If muscle mass is low, focus on heavy compound joint movements first
-    if (isMuscleLow) {
-      routineName += ' [골격근량 보강]';
-      exercises = [
-        { name: '스쿼트 (Squat)', sets: 4, reps: 8, notes: '골격근 부족 보강을 위한 핵심 하체 운동, 천천히 깊게' },
-        { name: '벤치 프레스 (Bench Press)', sets: 4, reps: 8, notes: '대흉근 기초 근력 확보를 위한 다관절 복합 운동' },
-        { name: '데드리프트 (Deadlift)', sets: 3, reps: 5, notes: '전신 근력 및 후면 사슬 강화를 위한 고중량 복합 운동' },
-        { name: '바벨 로우 (Barbell Row)', sets: 4, reps: 10, notes: '두꺼운 등 프레임을 위한 기초 운동' },
-      ];
-    } else {
-      // Normal routine generation
-      if (userProfile.mode === 'bulk') {
-        exercises = [
-          { name: '스쿼트 (Squat)', sets: 5, reps: 5, notes: '최대 중량의 80-85% 강도' },
-          { name: '밀리터리 프레스 (Military Press)', sets: 4, reps: 6, notes: '어깨 프레임 증가를 위한 스트렝스 훈련' },
-          { name: '벤치 프레스 (Bench Press)', sets: 5, reps: 5, notes: '최대 5회 반복 가능한 무거운 중량 위주' },
-          { name: '풀업 / 랫풀다운', sets: 4, reps: 8, notes: '광배근 너비 확보' },
-          { name: '바벨 컬 / 삼두 익스텐션 컴파운드', sets: 3, reps: 10, notes: '팔 볼륨 확장 세트' },
-        ];
-      } else if (userProfile.mode === 'cut') {
-        exercises = [
-          { name: '가블렛 스쿼트 (Goblet Squat)', sets: 4, reps: 15, notes: '고반복 짧은 휴식 (60초 이하)' },
-          { name: '덤벨 벤치 프레스', sets: 4, reps: 12, notes: '근섬유 자극 극대화' },
-          { name: '케이블 로우', sets: 4, reps: 15, notes: '등 운동 볼륨 채우기' },
-          { name: '레그 프레스', sets: 4, reps: 15, notes: '하체 펌핑 및 대사율 촉진' },
-          { name: '인터벌 유산소 (러닝머신)', sets: 1, reps: 30, notes: '강도 높게 30분 동안 진행 필수!' },
-        ];
-      } else if (userProfile.mode === 'leanmass') {
-        exercises = [
-          { name: '백 스쿼트 (Back Squat)', sets: 4, reps: 10, notes: '점진적 과부하: 지난주보다 2.5kg 증량 목표' },
-          { name: '인클라인 덤벨 프레스', sets: 4, reps: 10, notes: '윗가슴 타겟팅' },
-          { name: '풀업 (Pull-Up)', sets: 4, reps: 8, notes: '맨몸 또는 밴드 보조' },
-          { name: '루마니안 데드리프트', sets: 4, reps: 10, notes: '햄스트링 및 기립근 강화' },
-          { name: '사이드 레터럴 레이즈', sets: 4, reps: 15, notes: '측면 삼각근 자극' },
-        ];
-      } else {
-        // Maintain
-        exercises = [
-          { name: '레그 익스텐션 / 레그 컬', sets: 3, reps: 12, notes: '하체 탄력 유지' },
-          { name: '체스트 프레스 머신', sets: 3, reps: 12, notes: '가슴 안전 훈련' },
-          { name: '시티드 로우', sets: 3, reps: 12, notes: '등 활성화' },
-          { name: '덤벨 숄더 프레스', sets: 3, reps: 12, notes: '어깨 기본 근력 유지' },
-          { name: '가벼운 조깅 (러닝머신)', sets: 1, reps: 20, notes: '중강도로 건강 유지 목적 유산소 주 2회 진행' },
-        ];
-      }
-    }
-
+  const renameActiveRoutine = (newName: string) => {
+    if (!currentRoutine) return;
     setCurrentRoutine({
-      name: routineName,
-      exercises,
+      ...currentRoutine,
+      name: newName.trim() || '무명 루틴',
     });
   };
+
+  const saveRoutineToList = (name: string, exercises: RoutineExercise[]) => {
+    const newRoutine: WorkoutRoutine = {
+      id: Date.now().toString(),
+      name: name.trim() || `새 루틴 - ${new Date().toLocaleDateString()}`,
+      exercises: exercises.map(ex => ({ name: ex.name, sets: ex.sets, reps: ex.reps, notes: ex.notes })),
+    };
+    setSavedRoutines((prev) => [newRoutine, ...prev]);
+  };
+
+  const deleteRoutineFromList = (id: string) => {
+    setSavedRoutines((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const renameRoutineInList = (id: string, newName: string) => {
+    setSavedRoutines((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, name: newName.trim() || r.name } : r))
+    );
+  };
+
+
 
   const registerMeal = (meal: Omit<FoodItem, 'id' | 'mealType'>) => {
     setRegisteredMeals((prev) => {
@@ -529,11 +514,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleDietMode,
         saveWorkoutLog,
         completeWorkout,
-        generateAutoRoutine,
         saveCustomRoutine,
         registerMeal,
         removeRegisteredMeal,
         resetAllData,
+        savedRoutines,
+        renameActiveRoutine,
+        saveRoutineToList,
+        deleteRoutineFromList,
+        renameRoutineInList,
       }}
     >
       {children}

@@ -143,10 +143,10 @@ async function runAiPrompt(
   }
 }
 
-// --- Specific AI Functions ---
-
 interface RawRoutineResponse {
-  name: string;
+  isWorkoutVideo: boolean;
+  checkMessage?: string | null;
+  name?: string;
   exercises: Array<Partial<ParsedExerciseRaw> & { name?: string }>;
 }
 
@@ -156,40 +156,58 @@ const YOUTUBE_ROUTINE_PROMPT = (contextBlock: string) => `
 
 ${contextBlock}
 
-## 핵심 규칙 (반드시 준수)
-1. 영상에 실제로 등장하는 운동만 포함하세요. 영상에 없는 운동을 임의로 추가하지 마세요.
-2. 각 운동은 **장비(equipment)**, **각도(angle)**, **기본 동작명(baseExercise)** 을 반드시 구분하세요.
-3. "벤치 프레스"처럼 모호한 이름만 쓰지 마세요. 반드시 아래 조합으로 구체화하세요:
-   - 플랫 바벨 벤치 프레스 / 인클라인 덤벨 벤치 프레스 / 디클라인 바벨 벤치 프레스
-   - 스미스 머신 플랫 벤치 프레스 / 스미스 머신 인클라인 벤치 프레스
-   - 케이블 크로스오버, 머신 체스트 프레스, 맨몸 푸시업 등
-4. equipment 허용값: barbell | dumbbell | cable | machine | smith | bodyweight | kettlebell | band
-5. angle 허용값 (해당 시): flat | incline | decline | seated | standing | null
-6. 영상에서 장비/각도가 명확하지 않으면 confidence를 "low"로 설정하고 notes에 [추정]과 근거를 적으세요.
-7. 영상에 세트/횟수가 언급되면 그대로 반영하고, 없을 때만 일반적인 값(3~4세트, 8~12회)을 사용하세요.
-8. 영상 순서대로 exercises 배열을 정렬하세요.
+## 영상 검증 가드레일 규칙 (CRITICAL)
+1. 먼저, 제공된 영상 정보가 헬스(웨이트 트레이닝), 맨몸운동(칼리스테닉스), 크로스핏, 요가, 필라테스, 홈트레이닝, 스트레칭 등 **신체 운동/훈련/피트니스 루틴**에 관한 영상인지 검증하십시오.
+2. 만약 영상이 운동 강좌, 워크아웃, 홈트, 루틴 영상이 아니라 운동과 전혀 무관한 콘텐츠(예: 요리 요리법 레시피, 노래 음악, 토크쇼, 게임 방송, 시사 뉴스 등)라면:
+   - "isWorkoutVideo"를 false로 설정하세요.
+   - "checkMessage"에 반드시 "운동 영상이 아닙니다! 운동 영상 링크를 이용해주세요!"를 기록하여 반환하고, "exercises"는 빈 배열로 반환하세요.
+3. 운동 관련 영상인 경우 "isWorkoutVideo"를 true로 설정하고 "checkMessage"는 null로 설정하세요.
 
-## 잘못된 예 vs 올바른 예
-- ❌ "벤치 프레스" → ✅ equipment: barbell, angle: flat, baseExercise: "벤치 프레스"
-- ❌ "덤벨 프레스" → ✅ equipment: dumbbell, angle: incline, baseExercise: "벤치 프레스"
-- ❌ "가슴 운동" → ✅ equipment: cable, baseExercise: "케이블 크로스오버"
+## 운동 매핑 및 정확도 개선 규칙
+1. 아래의 **표준 운동 카탈로그(Standard Exercise Catalog)**를 적극적으로 참조하여, 영상에 등장하는 운동을 가장 근접하고 알맞은 표준명(baseExercise / baseExerciseEn)으로 매핑하여 정확도를 극대화하십시오:
+   - **스쿼트 계열**: '백 스쿼트' (Back Squat), '프론트 스쿼트' (Front Squat), '고블릿 스쿼트' (Goblet Squat)
+   - **데드리프트 계열**: '데드리프트' (Deadlift), '루마니안 데드리프트' (Romanian Deadlift), '스모 데드리프트' (Sumo Deadlift)
+   - **벤치프레스 계열**: '벤치 프레스' (Bench Press) -> 장비(barbell | dumbbell | smith | machine)와 각도(flat | incline | decline)를 정확히 명시하십시오.
+   - **가슴 고립/플라이 계열**: '덤벨 플라이' (Dumbbell Fly), '펙덱 플라이' (Pec Deck Fly), '케이블 크로스오버' (Cable Crossover)
+   - **등/풀/로우 계열**: '랫 풀다운' (Lat Pulldown), '풀업' (Pull Up), '친업' (Chin Up), '원암 덤벨 로우' (One Arm Dumbbell Row), '바벨 로우' (Barbell Row), '시티드 케이블 로우' (Seated Cable Row), '티바 로우' (T-Bar Row)
+   - **하체 머신 계열 (★오분류 방지 가이드 - 레그컬과 이너타이는 완전히 다름)**:
+     - '이너타이' (Inner Thigh / Hip Adduction) - 허벅지 안쪽(내전근) 힘으로 다리를 안으로 모으는 머신 운동. (레그컬과 절대 혼동 금지!)
+     - '아웃타이' (Outer Thigh / Hip Abduction) - 엉덩이/허벅지 바깥쪽 힘으로 다리를 바깥으로 벌리는 머신 운동.
+     - '레그 컬' (Leg Curl) - 엎드리거나 앉아서 발목을 걸고 무릎을 뒤로 굽혀 허벅지 뒷면(햄스트링)을 자극하는 운동.
+     - '레그 익스텐션' (Leg Extension) - 앉아서 발판을 걸고 무릎을 앞으로 펴서 허벅지 앞면(대퇴사두)을 자극하는 운동.
+     - '레그 프레스' (Leg Press) - 발판 위에 발을 딛고 무릎을 굽혔다 펴며 발판을 밀어내는 머신 프레스 운동.
+   - **어깨 계열**: '오버헤드 프레스' (Overhead Press), '숄더 프레스' (Shoulder Press), '사이드 레터럴 레이즈' (Lateral Raise), '페이스 풀' (Face Pull)
+   - **이두/삼두 계열**: '바벨 컬' (Barbell Curl), '덤벨 컬' (Dumbbell Curl), '트라이셉스 푸시다운' (Triceps Pushdown), '라잉 트라이셉스 익스텐션' (Lying Triceps Extension)
+2. 영상에 실제로 등장하지 않는 뜬금없는 종목을 임의로 상상하여 채우지 마십시오.
+3. equipment 허용값: barbell | dumbbell | cable | machine | smith | bodyweight | kettlebell | band
+4. angle 허용값 (해당 시): flat | incline | decline | seated | standing | null
+5. 영상에서 장비/각도가 불확실할 경우 confidence를 "low"로 지정하고 notes에 [추정] 사유를 자세히 기재하세요.
+6. 영상 내에서 구체적인 세트/횟수 숫자가 언급될 경우 우선적으로 반영하며, 특별한 정보가 없을 경우에만 3~4세트, 8~12회 규격으로 기입하세요.
+7. 루틴 순서가 영상 진행 순서와 일치하도록 배열하십시오.
+
+## 오분류 방지 예시
+- 영상에 '이너타이/어덕션/허벅지 안쪽 모으기'가 나오는데 '레그컬'로 매핑하는 것 → ❌ 오답! (equipment: machine, baseExercise: "이너타이" (Inner Thigh / Hip Adduction)로 기입해야 합니다.)
+- 덤벨 프레스 → ✅ equipment: dumbbell, angle: incline, baseExercise: "벤치 프레스" (Bench Press)
+- 케이블 가슴 모으기 → ✅ equipment: cable, baseExercise: "케이블 크로스오버" (Cable Crossover)
 
 반드시 아래 JSON 스키마와 완전히 동일한 형식의 오브젝트 하나만 반환하세요.
 마크다운 펜스(\`\`\`json)나 부연 설명 없이 순수 JSON만 출력하세요.
 
 {
+  "isWorkoutVideo": true,
+  "checkMessage": null,
   "name": "영상 기반 루틴 이름",
   "exercises": [
     {
-      "baseExercise": "벤치 프레스",
-      "baseExerciseEn": "Bench Press",
-      "equipment": "barbell",
-      "angle": "flat",
+      "baseExercise": "이너타이",
+      "baseExerciseEn": "Inner Thigh (Hip Adduction)",
+      "equipment": "machine",
+      "angle": "seated",
       "grip": null,
       "machineVariant": null,
       "sets": 4,
-      "reps": 8,
-      "notes": "가슴 전체 자극, 어깨뼈 고정",
+      "reps": 12,
+      "notes": "내전근 자극 집중",
       "confidence": "high"
     }
   ]
@@ -197,7 +215,7 @@ ${contextBlock}
 `;
 
 function postProcessRoutine(parsed: RawRoutineResponse): WorkoutRoutine {
-  const exercises: RoutineExercise[] = parsed.exercises.map((raw) => {
+  const exercises: RoutineExercise[] = (parsed.exercises || []).map((raw) => {
     const normalized = normalizeParsedExercise(raw);
     return toRoutineExercise(normalized);
   });
@@ -233,6 +251,11 @@ export async function parseYoutubeRoutine(
     const cleanJsonStr = rawResponse.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed: RawRoutineResponse = JSON.parse(cleanJsonStr);
     
+    // Check if the LLM flagged this as a non-workout video (Guardrail)
+    if (parsed.isWorkoutVideo === false) {
+      throw new Error(parsed.checkMessage || '운동 영상이 아닙니다! 운동 영상 링크를 이용해주세요!');
+    }
+    
     if (!parsed.name || !Array.isArray(parsed.exercises) || parsed.exercises.length === 0) {
       throw new Error('올바르지 않은 응답 형식');
     }
@@ -240,6 +263,10 @@ export async function parseYoutubeRoutine(
     return postProcessRoutine(parsed);
   } catch (err: any) {
     console.error('AI YouTube parsing failed, using fallback mock:', err);
+    // Bubble up the specific non-workout video guardrail error message
+    if (err.message && err.message.includes('운동 영상이 아닙니다')) {
+      throw err;
+    }
     return getMockRoutine(url, extraContext, contextBlock);
   }
 }

@@ -8,7 +8,7 @@ import { CalendarTab } from './components/CalendarTab';
 import { Home, ClipboardList, Dumbbell, Calendar, Settings, Sparkles, ChevronRight, ChevronLeft } from 'lucide-react';
 
 const MainLayout: React.FC = () => {
-  const { userProfile, updateProfile, generateAutoRoutine } = useApp();
+  const { userProfile, updateProfile } = useApp();
   const [activeTab, setActiveTab] = useState<string>('dashboard');
 
   // Onboarding local states
@@ -36,11 +36,6 @@ const MainLayout: React.FC = () => {
       },
       isOnboarded: true,
     });
-    
-    // Automatically generate first program based on inputs
-    setTimeout(() => {
-      generateAutoRoutine();
-    }, 100);
   };
 
   // 1. Render Onboarding view if not finished
