@@ -227,7 +227,7 @@ export const SettingsTab: React.FC = () => {
         </div>
 
         <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-          유튜브 운동 루틴 분석 및 보유 재료 기반 AI 식단 조리 레시피 생성을 위해 API Key를 설정합니다. Key는 브라우저 로컬 저장소에 암호 보관되어 안전합니다.
+          유튜브 운동 루틴 분석 및 보유 재료 기반 AI 식단 조리 레시피 생성을 위해 API Key를 설정합니다. <strong>API Key를 입력하지 않아도 서버 기본 API Key(환경 변수)가 세팅되어 있다면 자동으로 정밀 실시간 AI 분석이 실행됩니다.</strong> 개별 API Key(OpenAI 혹은 개별 Gemini 계정)를 직접 사용하고 싶으실 때만 입력해 주세요. Key는 브라우저 로컬 저장소에 안전하게 암호 보관됩니다.
         </p>
 
         <div className="space-y-4">
@@ -276,8 +276,8 @@ export const SettingsTab: React.FC = () => {
             </button>
           </div>
           {!apiConfig.key && (
-            <p className="text-[10px] text-amber-600 bg-amber-50 rounded-lg p-2 leading-relaxed">
-              💡 API Key 미등록 시, 기기에 내장된 로컬 **모의 오프라인 인공지능(Mock AI)**을 바탕으로 추천 및 분석을 대신 진행합니다.
+            <p className="text-[10px] text-sky-600 bg-sky-50 rounded-lg p-2 leading-relaxed">
+              💡 API Key 미등록 시, 서버의 기본 API Key(Vercel 환경 변수)를 사용하여 자동으로 정밀 AI가 구동됩니다. (서버 키도 세팅되어 있지 않은 로컬 테스트 환경에서는 오프라인 모의 AI(Mock AI)로 대체 작동합니다.)
             </p>
           )}
         </div>
